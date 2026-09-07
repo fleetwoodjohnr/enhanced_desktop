@@ -1,0 +1,25 @@
+[Unit]
+Description=Desktop Forge widget data service
+Documentation=https://github.com/fleetwoodjohnr
+# Widgets and notifications only mean anything inside a graphical session, so
+# the service follows it: started when the session starts, stopped with it.
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=@SRC_DIR@/bin/desktop-forged
+Restart=on-failure
+RestartSec=10
+# Providers reach the network and read the calendar; nothing needs to write
+# outside the user's own config and state directories.
+ProtectSystem=strict
+ProtectHome=read-only
+# The '-' prefix makes these tolerated-if-absent; without it a missing
+# directory fails namespace setup and the service never starts.
+ReadWritePaths=-%h/.config/desktop-forge -%h/.local/share/desktop-forge
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=graphical-session.target

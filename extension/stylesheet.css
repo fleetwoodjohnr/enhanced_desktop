@@ -1,0 +1,716 @@
+/* Desktop Forge's shared glass-card language. User-selected card, text and
+   accent colours are still applied inline; these translucent surfaces supply
+   hierarchy without replacing those settings. */
+
+.df-widget {
+    padding: 0;
+}
+
+.df-widget-body {
+    spacing: 8px;
+    padding: 16px 18px;
+}
+
+.df-header {
+    spacing: 10px;
+    min-height: 28px;
+}
+
+.df-header-icon {
+    border-radius: 10px;
+    padding: 5px;
+}
+
+.df-title {
+    font-size: 0.90em;
+    font-weight: bold;
+    letter-spacing: 0.2px;
+}
+
+.df-header-meta {
+    font-size: 0.78em;
+    font-weight: bold;
+}
+
+.df-clock-time {
+    font-size: 3.15em;
+    font-weight: 300;
+    letter-spacing: -1px;
+}
+.df-clock-date { font-size: 0.96em; }
+
+.df-weather-current { spacing: 8px; }
+.df-temp          { font-size: 2.7em; font-weight: 300; }
+.df-condition     { font-size: 1.02em; font-weight: bold; }
+.df-detail        { font-size: 0.82em; }
+.df-forecast      { spacing: 4px; }
+.df-forecast-day  {
+    font-size: 0.78em;
+    spacing: 1px;
+    padding: 4px 5px;
+    border-radius: 10px;
+    border-width: 1px;
+    border-color: transparent;
+    text-align: center;
+}
+
+.df-list { spacing: 7px; }
+
+.df-row {
+    spacing: 8px;
+    font-size: 0.94em;
+    padding: 7px 10px;
+    border-radius: 12px;
+    background-color: rgba(255,255,255,0.065);
+    border-width: 1px;
+    border-color: transparent;
+}
+.df-up            { color: #26a269; }
+.df-down          { color: #e01b24; }
+
+.df-stock-row { spacing: 10px; }
+.df-stock-symbol { font-weight: bold; letter-spacing: 0.4px; }
+.df-change {
+    min-width: 72px;
+    border-radius: 8px;
+    padding: 3px 7px;
+    font-size: 0.78em;
+    font-weight: bold;
+    text-align: right;
+}
+.df-change-up   { color: #8ff0a4; background-color: rgba(38,162,105,0.18); }
+.df-change-down { color: #ff7b83; background-color: rgba(224,27,36,0.18); }
+
+.df-calendar-row { spacing: 9px; }
+.df-cal-date {
+    font-size: 0.78em;
+    font-weight: bold;
+    width: 92px;
+    padding: 4px 7px;
+    border-radius: 8px;
+}
+.df-cal-summary { font-size: 0.92em; }
+
+.df-reminder-row { spacing: 7px; }
+.df-reminder-overdue { background-color: rgba(224,27,36,0.10); }
+.df-reminder-text { font-size: 0.92em; }
+.df-due-badge {
+    border-radius: 8px;
+    padding: 3px 7px;
+    font-size: 0.76em;
+    font-weight: bold;
+    background-color: rgba(255,255,255,0.09);
+}
+.df-due-overdue { color: #ff7b83; background-color: rgba(224,27,36,0.18); }
+
+.df-meter-group {
+    spacing: 5px;
+    padding: 7px 10px;
+    border-radius: 12px;
+    background-color: rgba(255,255,255,0.055);
+    border-width: 1px;
+    border-color: transparent;
+}
+.df-meter-label { font-size: 0.82em; font-weight: bold; }
+.df-meter-value { font-size: 0.82em; font-weight: bold; }
+
+.df-meter-track   { height: 8px; border-radius: 4px; background-color: rgba(255,255,255,0.14); }
+.df-meter-fill    { height: 8px; border-radius: 4px; }
+
+.df-error         { font-size: 0.80em; color: #ffbe6f; padding-top: 4px; }
+.df-stale         { font-size: 0.76em; padding-top: 4px; }
+.df-empty         { font-size: 0.92em; padding: 8px 2px; }
+
+/* -- layout editing ------------------------------------------------------ */
+/* St's CSS is a subset: borders are solid only, so the editing outline uses
+   the accent-neutral white the cards already draw their text in. */
+
+.df-edit-backdrop { background-color: rgba(0,0,0,0.18); }
+
+.df-grip {
+    background-color: #0a84ff;
+    border-radius: 5px;
+    border-width: 1px;
+    border-color: rgba(255,255,255,0.84);
+}
+.df-grip:hover { background-color: #62a0ea; }
+
+.df-grip-n, .df-grip-s, .df-grip-e, .df-grip-w {
+    border-radius: 7px;
+}
+
+.df-move-surface {
+    border-width: 1px;
+    border-color: rgba(255,255,255,0.18);
+}
+
+.df-move-surface-active {
+    border-width: 2px;
+    border-color: rgba(10,132,255,0.88);
+    background-color: rgba(10,132,255,0.035);
+}
+
+.df-edit-hint {
+    background-color: rgba(0,0,0,0.85);
+    color: #ffffff;
+    border-radius: 12px;
+    padding: 10px 12px 10px 18px;
+    font-size: 13px;
+    spacing: 14px;
+}
+
+.df-edit-done {
+    background-color: rgba(255,255,255,0.15);
+    border-radius: 8px;
+    padding: 6px 16px;
+    font-weight: bold;
+}
+.df-edit-done:hover  { background-color: rgba(255,255,255,0.28); }
+.df-edit-done:active { background-color: rgba(255,255,255,0.40); }
+
+/* -- interactive widgets ------------------------------------------------- */
+
+.df-add {
+    border-radius: 99px;
+    padding: 3px 9px;
+    color: rgba(255,255,255,0.75);
+    font-size: 1.15em;
+    font-weight: bold;
+    background-color: rgba(255,255,255,0.08);
+    border-width: 1px;
+    border-color: transparent;
+}
+.df-add:hover { background-color: rgba(255,255,255,0.18); color: #ffffff; }
+.df-add:active { background-color: rgba(255,255,255,0.26); }
+
+.df-tick {
+    border-radius: 9px;
+    padding: 3px;
+    color: rgba(255,255,255,0.72);
+}
+.df-tick:hover { background-color: rgba(255,255,255,0.20); }
+
+/* -- add-reminder dialog ------------------------------------------------- */
+
+.df-theme-light .df-dialog {
+    color: #172033;
+    background-color: #fafafb;
+}
+.df-theme-dark .df-dialog {
+    color: #f7faff;
+    background-color: #2e2e33;
+}
+
+.df-dialog-title   { font-size: 15px; font-weight: bold; padding-bottom: 12px; }
+.df-dialog-content { spacing: 10px; padding: 4px 2px; }
+.df-dialog-label   { font-size: 11px; font-weight: bold; padding-top: 4px; }
+.df-chips          { spacing: 6px; }
+
+.df-chip {
+    border-radius: 8px;
+    padding: 5px 12px;
+    font-size: 12px;
+    background-color: rgba(255,255,255,0.10);
+    border-width: 1px;
+    border-color: transparent;
+}
+.df-chip:hover    { background-color: rgba(255,255,255,0.20); }
+.df-chip:checked  { background-color: rgba(53,132,228,0.85); color: #ffffff; }
+
+.df-entry {
+    border-radius: 8px;
+    padding: 8px 10px;
+    background-color: rgba(255,255,255,0.10);
+    color: #ffffff;
+    caret-color: #ffffff;
+    selection-background-color: rgba(53,132,228,0.85);
+    selected-color: #ffffff;
+}
+.df-entry:focus { background-color: rgba(255,255,255,0.18); }
+
+.df-theme-dark .df-entry {
+    color: #f7faff;
+    caret-color: #f7faff;
+    background-color: rgba(255,255,255,0.10);
+    border-width: 1px;
+    border-color: rgba(255,255,255,0.12);
+}
+.df-theme-dark .df-entry:hover,
+.df-theme-dark .df-entry:focus { background-color: rgba(255,255,255,0.18); }
+.df-theme-dark .df-entry StLabel.hint-text { color: rgba(247,250,255,0.62); }
+
+.df-theme-light .df-chip,
+.df-theme-light .df-entry {
+    color: #172033;
+    caret-color: #172033;
+    background-color: rgba(23,32,51,0.055);
+    border-width: 1px;
+    border-color: rgba(23,32,51,0.10);
+}
+.df-theme-light .df-chip:hover,
+.df-theme-light .df-entry:hover,
+.df-theme-light .df-entry:focus { background-color: rgba(23,32,51,0.09); }
+.df-theme-light .df-entry StLabel.hint-text { color: rgba(23,32,51,0.58); }
+.df-theme-light .df-chip:checked {
+    color: #ffffff;
+    background-color: #0a84ff;
+}
+
+.df-theme-light .df-dialog .modal-dialog-button {
+    color: #172033;
+    background-color: rgba(23,32,51,0.08);
+}
+.df-theme-light .df-dialog .modal-dialog-button:hover,
+.df-theme-light .df-dialog .modal-dialog-button:focus {
+    color: #172033;
+    background-color: rgba(23,32,51,0.13);
+}
+.df-theme-dark .df-dialog .modal-dialog-button {
+    color: #f7faff;
+    background-color: rgba(255,255,255,0.10);
+}
+.df-theme-dark .df-dialog .modal-dialog-button:hover,
+.df-theme-dark .df-dialog .modal-dialog-button:focus {
+    color: #ffffff;
+    background-color: rgba(255,255,255,0.17);
+}
+
+/* -- to-do -------------------------------------------------------------- */
+
+.df-todo-scroll { padding-top: 0; }
+.df-todo-row {
+    spacing: 5px;
+    padding: 7px;
+    border-radius: 12px;
+    background-color: rgba(255,255,255,0.06);
+    border-width: 1px;
+    border-color: transparent;
+}
+
+.df-drag-handle,
+.df-todo-delete {
+    border-radius: 7px;
+    padding: 3px;
+    color: rgba(255,255,255,0.58);
+}
+.df-drag-handle:hover,
+.df-todo-delete:hover { background-color: rgba(255,255,255,0.16); color: #ffffff; }
+
+.df-todo-text {
+    padding: 4px 3px;
+    text-align: left;
+    border-radius: 7px;
+}
+.df-todo-text:hover { background-color: rgba(255,255,255,0.10); }
+
+.df-status {
+    min-width: 76px;
+    border-radius: 8px;
+    padding: 4px 7px;
+    font-size: 0.72em;
+    font-weight: bold;
+    background-color: rgba(255,255,255,0.12);
+    border-width: 1px;
+    border-color: transparent;
+}
+.df-status:hover { background-color: rgba(255,255,255,0.22); }
+.df-status-in_progress { color: #99c1f1; background-color: rgba(53,132,228,0.18); }
+.df-status-blocked { color: #ffbe6f; background-color: rgba(229,165,10,0.18); }
+.df-status-done { color: #8ff0a4; background-color: rgba(38,162,105,0.18); }
+
+.df-drop-before {
+    border-top-width: 2px;
+    border-color: #62a0ea;
+}
+.df-drop-after {
+    border-bottom-width: 2px;
+    border-color: #62a0ea;
+}
+
+.df-status-menu .popup-menu-item { font-size: 0.92em; }
+
+/* -- news --------------------------------------------------------------- */
+
+.df-news-list { spacing: 7px; }
+
+.df-news-item {
+    border-radius: 13px;
+    padding: 10px;
+    text-align: left;
+    background-color: rgba(255,255,255,0.065);
+    border-width: 1px;
+    border-color: transparent;
+    box-shadow: none;
+    transition-duration: 0ms;
+}
+.df-news-item:hover { background-color: rgba(255,255,255,0.12); }
+.df-news-item:active { background-color: rgba(255,255,255,0.20); }
+
+.df-news-content { spacing: 9px; }
+.df-news-index {
+    width: 25px;
+    border-radius: 9px;
+    padding: 5px 0;
+    font-size: 0.78em;
+    font-weight: bold;
+    text-align: center;
+}
+.df-news-headline { font-size: 0.92em; font-weight: bold; }
+.df-news-headline-viewport { min-height: 1.35em; }
+/* The gap between the two copies of a headline in the hover ticker. */
+.df-news-ticker { spacing: 14px; }
+.df-news-meta {
+    font-size: 0.76em;
+    padding-top: 3px;
+}
+
+/* -- adaptive liquid glass ---------------------------------------------- */
+
+.df-theme-light .df-row,
+.df-theme-light .df-todo-row,
+.df-theme-light .df-meter-group,
+.df-theme-light .df-news-item,
+.df-theme-light .df-forecast-day {
+    background-color: rgba(255,255,255,0.32);
+    border-width: 1px;
+    border-color: rgba(23,32,51,0.10);
+    box-shadow: none;
+}
+
+.df-theme-dark .df-row,
+.df-theme-dark .df-todo-row,
+.df-theme-dark .df-meter-group,
+.df-theme-dark .df-news-item,
+.df-theme-dark .df-forecast-day {
+    background-color: rgba(255,255,255,0.055);
+    border-width: 1px;
+    border-color: rgba(255,255,255,0.10);
+    box-shadow: none;
+}
+
+.df-theme-light .df-add,
+.df-theme-light .df-tick,
+.df-theme-light .df-drag-handle,
+.df-theme-light .df-todo-delete,
+.df-theme-light .df-status {
+    color: rgba(23,32,51,0.78);
+    background-color: rgba(23,32,51,0.055);
+    border-color: rgba(23,32,51,0.08);
+}
+
+.df-theme-light .df-add:hover,
+.df-theme-light .df-tick:hover,
+.df-theme-light .df-drag-handle:hover,
+.df-theme-light .df-todo-delete:hover,
+.df-theme-light .df-status:hover,
+.df-theme-light .df-news-item:hover {
+    color: #172033;
+    background-color: rgba(23,32,51,0.10);
+}
+
+.df-theme-light .df-meter-track { background-color: rgba(23,32,51,0.12); }
+.df-theme-dark .df-meter-track { background-color: rgba(255,255,255,0.15); }
+.df-theme-light .df-due-badge { background-color: rgba(23,32,51,0.055); }
+.df-theme-light .df-empty { color: rgba(23,32,51,0.62); }
+.df-theme-dark .df-empty { color: rgba(247,250,255,0.64); }
+
+.df-theme-light .df-change-up,
+.df-theme-light .df-status-done {
+    color: #187a46;
+    background-color: rgba(48,209,88,0.16);
+}
+.df-theme-light .df-change-down,
+.df-theme-light .df-due-overdue {
+    color: #b4233c;
+}
+.df-theme-light .df-status-in_progress {
+    color: #075ea8;
+    background-color: rgba(10,132,255,0.15);
+}
+.df-theme-light .df-status-blocked {
+    color: #805500;
+    background-color: rgba(255,159,10,0.17);
+}
+.df-theme-light .df-reminder-overdue {
+    background-color: rgba(255,55,95,0.12);
+}
+
+.df-theme-light .df-add:focus,
+.df-theme-light .df-status:focus,
+.df-theme-dark .df-add:focus,
+.df-theme-dark .df-status:focus {
+    border-width: 2px;
+    border-color: rgba(10,132,255,0.72);
+    box-shadow: none;
+}
+
+.df-theme-light .df-news-item:focus,
+.df-theme-dark .df-news-item:focus {
+    border-width: 1px;
+    border-color: rgba(10,132,255,0.72);
+    box-shadow: none;
+}
+
+.df-theme-dark .df-add,
+.df-theme-dark .df-tick,
+.df-theme-dark .df-drag-handle,
+.df-theme-dark .df-todo-delete,
+.df-theme-dark .df-status {
+    border-color: rgba(255,255,255,0.08);
+}
+
+/* -- adaptive GNOME shell chrome ---------------------------------------- */
+
+.df-shell-light #panel {
+    background-color: rgba(250,250,251,0.96);
+    color: #222226;
+    border-bottom-width: 1px;
+    border-color: rgba(34,34,38,0.10);
+    box-shadow: none;
+}
+.df-shell-light #panel .panel-button { color: #222226; box-shadow: none; }
+.df-shell-light #panel .panel-button:hover,
+.df-shell-light #panel .panel-button:focus { background-color: rgba(34,34,38,0.10); }
+.df-shell-light #panel .panel-button:active,
+.df-shell-light #panel .panel-button:checked { background-color: rgba(34,34,38,0.17); }
+.df-shell-light #panel .panel-button.clock-display .clock { box-shadow: none; }
+.df-shell-light #panel .panel-button.clock-display:hover .clock,
+.df-shell-light #panel .panel-button.clock-display:focus .clock {
+    background-color: rgba(34,34,38,0.10);
+}
+.df-shell-light #panel .panel-button.clock-display:active .clock,
+.df-shell-light #panel .panel-button.clock-display:checked .clock {
+    background-color: rgba(34,34,38,0.17);
+}
+.df-shell-light #panel .panel-button#panelActivities .workspace-dot {
+    background-color: #222226;
+}
+.df-shell-light #panel .panel-button.screen-recording-indicator,
+.df-shell-dark #panel .panel-button.screen-recording-indicator {
+    color: #ffffff;
+    background-color: #c01c28;
+}
+.df-shell-light #panel .panel-button.screen-sharing-indicator,
+.df-shell-dark #panel .panel-button.screen-sharing-indicator {
+    color: #ffffff;
+    background-color: #e66100;
+}
+
+.df-shell-dark #panel {
+    background-color: rgba(24,24,27,0.96);
+    color: #ffffff;
+    border-bottom-width: 1px;
+    border-color: rgba(255,255,255,0.10);
+    box-shadow: none;
+}
+.df-shell-dark #panel .panel-button { color: #ffffff; box-shadow: none; }
+.df-shell-dark #panel .panel-button:hover,
+.df-shell-dark #panel .panel-button:focus { background-color: rgba(255,255,255,0.11); }
+.df-shell-dark #panel .panel-button:active,
+.df-shell-dark #panel .panel-button:checked { background-color: rgba(255,255,255,0.18); }
+.df-shell-dark #panel .panel-button.clock-display .clock { box-shadow: none; }
+.df-shell-dark #panel .panel-button.clock-display:hover .clock,
+.df-shell-dark #panel .panel-button.clock-display:focus .clock {
+    background-color: rgba(255,255,255,0.11);
+}
+.df-shell-dark #panel .panel-button.clock-display:active .clock,
+.df-shell-dark #panel .panel-button.clock-display:checked .clock {
+    background-color: rgba(255,255,255,0.18);
+}
+.df-shell-dark #panel .panel-button#panelActivities .workspace-dot {
+    background-color: #ffffff;
+}
+
+.df-shell-light #panel:overview,
+.df-shell-dark #panel:overview,
+.df-shell-light #panel.unlock-screen,
+.df-shell-dark #panel.unlock-screen,
+.df-shell-light #panel.login-screen,
+.df-shell-dark #panel.login-screen {
+    background-color: transparent;
+    border-color: transparent;
+}
+.df-shell-light #panel:overview .panel-button,
+.df-shell-dark #panel:overview .panel-button,
+.df-shell-light #panel.unlock-screen .panel-button,
+.df-shell-dark #panel.unlock-screen .panel-button,
+.df-shell-light #panel.login-screen .panel-button,
+.df-shell-dark #panel.login-screen .panel-button { color: #fafafb; }
+.df-shell-light #panel:overview .panel-button#panelActivities .workspace-dot,
+.df-shell-dark #panel:overview .panel-button#panelActivities .workspace-dot,
+.df-shell-light #panel.unlock-screen .panel-button#panelActivities .workspace-dot,
+.df-shell-dark #panel.unlock-screen .panel-button#panelActivities .workspace-dot,
+.df-shell-light #panel.login-screen .panel-button#panelActivities .workspace-dot,
+.df-shell-dark #panel.login-screen .panel-button#panelActivities .workspace-dot {
+    background-color: #fafafb;
+}
+
+.df-shell-light #dashtodockContainer #dash .dash-background {
+    background-color: rgba(248,251,255,0.92) !important;
+    border-color: rgba(23,32,51,0.12) !important;
+    box-shadow: none !important;
+}
+.df-shell-light #dashtodockContainer #dash .dash-separator {
+    background-color: rgba(23,32,51,0.14);
+}
+.df-shell-light #dashtodockContainer #dash .show-apps .overview-icon,
+.df-shell-light #dashtodockContainer #dash .overview-tile .overview-icon {
+    color: #172033;
+    background-color: transparent;
+}
+.df-shell-light #dashtodockContainer #dash .show-apps:hover .overview-icon,
+.df-shell-light #dashtodockContainer #dash .overview-tile:hover .overview-icon {
+    background-color: rgba(23,32,51,0.10);
+}
+.df-shell-light #dashtodockContainer #dash .show-apps:active .overview-icon,
+.df-shell-light #dashtodockContainer #dash .show-apps:checked .overview-icon,
+.df-shell-light #dashtodockContainer #dash .overview-tile:active .overview-icon,
+.df-shell-light #dashtodockContainer #dash .overview-tile:checked .overview-icon {
+    background-color: rgba(23,32,51,0.16);
+}
+.df-shell-light #dashtodockContainer #dash .app-well-app-running-dot,
+.df-shell-light #dashtodockContainer #dash .app-grid-running-dot {
+    background-color: #172033;
+}
+
+.df-shell-dark #dashtodockContainer #dash .dash-background {
+    background-color: rgba(24,32,44,0.92) !important;
+    border-color: rgba(255,255,255,0.12) !important;
+    box-shadow: none !important;
+}
+.df-shell-dark #dashtodockContainer #dash .dash-separator {
+    background-color: rgba(255,255,255,0.14);
+}
+.df-shell-dark #dashtodockContainer #dash .show-apps .overview-icon,
+.df-shell-dark #dashtodockContainer #dash .overview-tile .overview-icon {
+    color: #f7faff;
+    background-color: transparent;
+}
+.df-shell-dark #dashtodockContainer #dash .show-apps:hover .overview-icon,
+.df-shell-dark #dashtodockContainer #dash .overview-tile:hover .overview-icon {
+    background-color: rgba(255,255,255,0.11);
+}
+.df-shell-dark #dashtodockContainer #dash .show-apps:active .overview-icon,
+.df-shell-dark #dashtodockContainer #dash .show-apps:checked .overview-icon,
+.df-shell-dark #dashtodockContainer #dash .overview-tile:active .overview-icon,
+.df-shell-dark #dashtodockContainer #dash .overview-tile:checked .overview-icon {
+    background-color: rgba(255,255,255,0.18);
+}
+.df-shell-dark #dashtodockContainer #dash .app-well-app-running-dot,
+.df-shell-dark #dashtodockContainer #dash .app-grid-running-dot {
+    background-color: #f7faff;
+}
+
+/* -- CLIVE --------------------------------------------------------------- */
+/* Sized in em throughout: the card root sets its own font-size from the
+   Text-size setting, so px here would ignore it. Accent-tinted surfaces --
+   the user's own bubble, Approve, the approval card's border -- are set
+   inline from the widget's accent rather than hardcoded here. */
+
+.df-clive-transcript { spacing: 8px; padding: 6px 2px; }
+.df-clive-mode { font-size: 0.80em; opacity: 0.7; }
+.df-clive-speaker { font-size: 0.76em; font-weight: bold; letter-spacing: 0.3px; }
+.df-clive-message { font-size: 0.92em; }
+.df-clive-welcome { padding: 4px 2px; opacity: 0.85; }
+.df-clive-actions { spacing: 6px; padding-top: 6px; }
+
+/* Speaker bubbles. The gutter has no content, only a floor on its width, so
+   a long turn still leaves the opposite margin visible. */
+.df-clive-gutter { min-width: 40px; }
+.df-clive-bubble {
+    font-size: 0.92em;
+    padding: 6px 9px;
+    border-radius: 12px;
+    background-color: rgba(255,255,255,0.07);
+    border-width: 1px;
+    border-color: transparent;
+}
+
+.df-clive-preview {
+    spacing: 4px;
+    padding: 8px 10px;
+    border-radius: 12px;
+    border-width: 1px;
+    border-color: rgba(255,255,255,0.28);
+    background-color: rgba(255,255,255,0.06);
+}
+
+.df-clive-button {
+    border-radius: 10px;
+    padding: 6px 10px;
+    font-size: 0.92em;
+    background-color: rgba(255,255,255,0.10);
+    border-width: 1px;
+    border-color: transparent;
+}
+.df-clive-button:hover,
+.df-clive-button:focus { background-color: rgba(255,255,255,0.20); }
+.df-clive-approve { font-weight: bold; }
+
+/* Staged files reuse the preview box, so the two read as the same kind of
+   aside on the conversation. The remove button follows .df-tick above. */
+.df-clive-attached { spacing: 4px; }
+.df-clive-attachment-rows { spacing: 2px; }
+.df-clive-attachment { spacing: 6px; }
+.df-clive-chip-remove {
+    border-radius: 99px;
+    padding: 2px;
+    color: rgba(255,255,255,0.72);
+}
+.df-clive-chip-remove:hover,
+.df-clive-chip-remove:focus { background-color: rgba(255,255,255,0.20); }
+
+/* A notice is a failure, not a hint: it uses the same warning token as the
+   other cards' error line rather than the dimmed activity colour. */
+.df-clive-notice { color: #ffbe6f; opacity: 1.0; }
+
+/* The transcript is the point of the card: keep a readable slice of it even
+   when the card is resized well below its natural height. */
+.df-clive-scroll { min-height: 56px; }
+
+/* The card holds the desktop keyboard while this is set. The cue goes on the
+   entry rather than the card border, which belongs to the glass surface.
+   St's CSS is a subset -- no border shorthand -- so the two halves are set
+   separately, exactly as the layout-editing outline above does. */
+.df-entry-capturing {
+    border-width: 1px;
+    border-color: rgba(50,173,230,0.95);
+}
+
+.df-theme-light .df-clive-bubble {
+    background-color: rgba(255,255,255,0.38);
+    border-color: rgba(23,32,51,0.10);
+}
+.df-theme-light .df-clive-preview {
+    background-color: rgba(255,255,255,0.42);
+}
+.df-theme-light .df-clive-button {
+    color: rgba(23,32,51,0.82);
+    background-color: rgba(23,32,51,0.06);
+    border-color: rgba(23,32,51,0.10);
+}
+.df-theme-light .df-clive-button:hover,
+.df-theme-light .df-clive-button:focus { background-color: rgba(23,32,51,0.12); }
+.df-theme-light .df-clive-notice { color: #a2540a; }
+.df-theme-light .df-clive-chip-remove { color: rgba(23,32,51,0.78); }
+.df-theme-light .df-clive-chip-remove:hover,
+.df-theme-light .df-clive-chip-remove:focus { background-color: rgba(23,32,51,0.12); }
+
+.df-theme-dark .df-clive-bubble {
+    background-color: rgba(255,255,255,0.06);
+    border-color: rgba(255,255,255,0.10);
+}
+.df-theme-dark .df-clive-preview {
+    background-color: rgba(255,255,255,0.05);
+}
+.df-theme-dark .df-clive-button {
+    color: #f7faff;
+    background-color: rgba(255,255,255,0.10);
+    border-color: rgba(255,255,255,0.12);
+}
+.df-theme-dark .df-clive-button:hover,
+.df-theme-dark .df-clive-button:focus { background-color: rgba(255,255,255,0.20); }
+/* The user's own bubble is tinted with the accent inline, so it needs no
+   outline of its own in either theme. */
+.df-theme-light .df-clive-bubble-mine,
+.df-theme-dark .df-clive-bubble-mine { border-color: transparent; }

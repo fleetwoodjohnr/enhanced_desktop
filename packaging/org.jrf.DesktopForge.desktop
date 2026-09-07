@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Desktop Forge
+Comment=Create desktop shortcuts and add widgets to your desktop
+Exec=desktop-forge
+Icon=org.jrf.DesktopForge
+Terminal=false
+Categories=Utility;GTK;
+Keywords=shortcut;launcher;desktop;widget;weather;stocks;calendar;reminder;todo;task;news;rss;feed;
+StartupNotify=true
+Actions=clive;
+
+[Desktop Action clive]
+Name=Open CLIVE
+Exec=desktop-forge --clive

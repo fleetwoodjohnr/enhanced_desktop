@@ -1,0 +1,20 @@
+#!/usr/bin/env python3
+import os
+import sys
+
+# The installed copy wins, matching the sibling projects -- but the checkout is
+# appended rather than used as an either/or fallback. An incomplete install
+# would otherwise leave modules unreachable with no way to recover, which is
+# exactly how a missing sub-package once stopped the app opening at all.
+_INSTALL_DIR = os.path.join(os.path.expanduser("~"), ".local", "share", "desktop-forge")
+if os.path.isdir(_INSTALL_DIR) and _INSTALL_DIR not in sys.path:
+    sys.path.insert(0, _INSTALL_DIR)
+
+_CHECKOUT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _CHECKOUT not in sys.path:
+    sys.path.append(_CHECKOUT)
+
+from desktop_forge.main import main
+
+if __name__ == "__main__":
+    sys.exit(main())

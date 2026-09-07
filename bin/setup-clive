@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+# Install optional CLIVE dependencies and a user-owned local Ollama runtime.
+set -euo pipefail
+clive_source="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+clive_share="$HOME/.local/share/desktop-forge"
+clive_units="$HOME/.config/systemd/user"
+mkdir -p "$clive_share" "$clive_units" "$HOME/.local/bin" "$HOME/.local/share/dbus-1/services"
+python3 -m venv --system-site-packages "$clive_share/clive-venv"
+"$clive_share/clive-venv/bin/python" -m pip install -r "$clive_source/requirements-clive.txt"
+
+if ! command -v ollama >/dev/null 2>&1 && [ ! -x "$clive_share/ollama/bin/ollama" ]; then
+    case "$(uname -m)" in
+        x86_64) clive_arch=amd64 ;;
+        aarch64) clive_arch=arm64 ;;
+        *) echo "Install Ollama for your architecture, then run this command again." >&2; exit 1 ;;
+    esac
+    clive_archive="$(mktemp --suffix=.tar.zst)"
+    trap 'rm -f "$clive_archive"' EXIT
+    echo "Downloading the Ollama runtime…"
+    curl -fL --retry 2 "https://ollama.com/download/ollama-linux-${clive_arch}.tar.zst" -o "$clive_archive"
+    mkdir -p "$clive_share/ollama"
+    python3 - "$clive_archive" "$clive_share/ollama" <<'PY'
+import sys, tarfile
+with tarfile.open(sys.argv[1]) as archive:
+    archive.extractall(sys.argv[2], filter='data')
+PY
+fi
+
+if command -v ollama >/dev/null 2>&1; then
+    clive_ollama="$(command -v ollama)"
+else
+    clive_ollama="$clive_share/ollama/bin/ollama"
+    ln -sfn "$clive_ollama" "$HOME/.local/bin/ollama"
+fi
+
+if ! curl -fsS --max-time 2 http://127.0.0.1:11434/api/version >/dev/null; then
+    cat > "$clive_units/desktop-forge-ollama.service" <<EOF
+[Unit]
+Description=CLIVE local Ollama model runtime
+After=network.target
+
+[Service]
+ExecStart="$clive_ollama" serve
+Environment=OLLAMA_HOST=127.0.0.1:11434
+Environment=OLLAMA_NO_CLOUD=1
+Environment=OLLAMA_NUM_PARALLEL=1
+Environment=OLLAMA_MAX_LOADED_MODELS=1
+Restart=on-failure
+Nice=10
+CPUWeight=25
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target
+EOF
+    systemctl --user daemon-reload
+    systemctl --user enable --now desktop-forge-ollama.service
+fi
+
+echo "Downloading Qwen3.5 4B (about 3.4 GB) for local fallback…"
+python3 - <<'PY'
+import json, time, urllib.request
+for attempt in range(30):
+    try:
+        urllib.request.urlopen('http://127.0.0.1:11434/api/version', timeout=2).close()
+        break
+    except OSError:
+        time.sleep(1)
+else:
+    raise SystemExit('Ollama did not start; inspect desktop-forge-ollama.service')
+request = urllib.request.Request('http://127.0.0.1:11434/api/pull',
+    data=json.dumps({'model': 'qwen3.5:4b', 'stream': True}).encode(),
+    headers={'Content-Type': 'application/json'})
+last = None
+with urllib.request.urlopen(request, timeout=600) as response:
+    for line in response:
+        state = json.loads(line)
+        if state.get('error'):
+            raise SystemExit(state['error'])
+        percent = int(state.get('completed', 0) / max(state.get('total', 1), 1) * 100)
+        progress = (state.get('status', ''), percent // 10)
+        if progress != last:
+            print(f"{progress[0]} {percent}%" if state.get('total') else progress[0], flush=True)
+            last = progress
+PY
+
+chmod +x "$clive_source/bin/desktop-forge-clive"
+ln -sfn "$clive_source/bin/desktop-forge-clive" "$HOME/.local/bin/desktop-forge-clive"
+sed "s#@SRC_DIR@#$clive_source#g" "$clive_source/packaging/systemd/desktop-forge-clive.service.in" > "$clive_units/desktop-forge-clive.service"
+cat > "$HOME/.local/share/dbus-1/services/org.jrf.DesktopForge.Clive.service" <<EOF
+[D-BUS Service]
+Name=org.jrf.DesktopForge.Clive
+Exec=$clive_source/bin/desktop-forge-clive
+SystemdService=desktop-forge-clive.service
+EOF
+systemctl --user daemon-reload
+systemctl --user enable --now desktop-forge-clive.service
+echo "CLIVE is installed. Open Desktop Forge → CLIVE → settings to add your Ollama API key."

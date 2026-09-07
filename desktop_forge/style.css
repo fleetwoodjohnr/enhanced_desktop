@@ -1,0 +1,63 @@
+.app-tile {
+    padding: 10px 6px;
+    border-radius: 12px;
+}
+
+.app-tile-name {
+    font-size: 0.85em;
+}
+
+.entry-card {
+    padding: 6px;
+}
+
+.issue-error {
+    color: @error_color;
+}
+
+.issue-warning {
+    color: @warning_color;
+}
+
+.monospace-dim {
+    font-family: monospace;
+    font-size: 0.85em;
+    opacity: 0.7;
+}
+
+/* CLIVE transcript. The two speakers are told apart by side and tint rather
+   than by a name label above every turn, which cost a line each. */
+.chat-bubble {
+    padding: 8px 12px;
+    border-radius: 14px;
+    background-color: alpha(currentColor, 0.07);
+}
+
+.chat-bubble-mine {
+    background-color: alpha(@accent_bg_color, 0.28);
+}
+
+/* The task you have to judge and the button that approves it, in one place. */
+.approval-card {
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid alpha(@accent_bg_color, 0.55);
+    background-color: alpha(@accent_bg_color, 0.08);
+}
+
+/* The composer. A plain .card leaves no edge against a dark window, and this
+   is a text field, so it takes the same ground as one. */
+.composer-card {
+    background-color: @view_bg_color;
+    border: 1px solid alpha(currentColor, 0.18);
+    border-radius: 12px;
+}
+
+/* An attached file waiting to be sent. Small and quiet: it is a note about the
+   message being composed, not part of the transcript. */
+.attachment-chip {
+    padding: 2px 4px 2px 10px;
+    border-radius: 999px;
+    background-color: alpha(currentColor, 0.10);
+    font-size: 0.9em;
+}

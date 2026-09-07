@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "widgets": [
+    {"id":"news-test","type":"news","enabled":true,"monitor":0,"x":80,"y":100,"width":296,"height":330,"options":{},"style":{}},
+    {"id":"system-test","type":"system","enabled":true,"monitor":0,"x":430,"y":100,"width":320,"height":250,"options":{},"style":{}},
+    {"id":"stocks-test","type":"stocks","enabled":true,"monitor":0,"x":800,"y":460,"width":320,"height":250,"options":{},"style":{}},
+    {"id":"todos-test","type":"todos","enabled":true,"monitor":0,"x":430,"y":460,"width":320,"height":250,"options":{},"style":{}}
+  ],
+  "style": {"theme_mode":"system","font_scale":0.95},
+  "providers": {},
+  "edit_layout": false
+}

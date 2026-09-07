@@ -1,0 +1,19 @@
+[Unit]
+Description=CLIVE desktop assistant
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=dbus
+BusName=org.jrf.DesktopForge.Clive
+ExecStart=@SRC_DIR@/bin/desktop-forge-clive
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=full
+Environment=LANGSMITH_TRACING=false
+Environment=LANGCHAIN_TRACING_V2=false
+
+[Install]
+WantedBy=graphical-session.target
