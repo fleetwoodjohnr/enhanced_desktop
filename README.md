@@ -23,8 +23,11 @@ Then launch **Desktop Forge** from the app grid, or run `desktop-forge`.
 CLIVE is a text assistant with a native desktop card, expanded chat, and local
 chat history. Its LangGraph agent can research the web, launch apps, find and
 read visible files, create new text files, move or trash files, manage the
-existing To-Do and Reminders lists, and operate accessible desktop controls.
-It can also use a shared screen for pointer and navigation-key input.
+existing To-Do and Reminders lists, and operate every normal graphical desktop
+app that appears in the application menu. It uses
+structured accessibility controls when an app provides them, and falls back to
+the consented shared screen for pointer, text, navigation, and shortcuts when
+apps such as LibreOffice or Thunderbird do not expose a complete tree.
 
 Install its optional Python environment and local model:
 
@@ -173,10 +176,12 @@ while it runs — including a task that **Task approval** let through without
 stopping.
 **Stop** is available in the card, expanded chat, and GNOME top panel while
 a task is active. GNOME separately asks for screen-sharing permission when
-pointer/screenshot tools first need it. For GUI tasks, name the app explicitly;
-accessibility support varies between applications. Terminal execution and
-terminal-app control are excluded. File tools stay in visible paths inside
-your home folder, and text writes create new files without overwriting.
+pointer/screenshot tools first need it. For GUI tasks, name the app explicitly.
+Desktop Forge's Shell extension keeps app identity and focus checks reliable on
+Wayland even when accessibility is incomplete. Terminal execution, terminal-app
+control, authentication prompts, and lock-screen surfaces remain excluded. File
+tools stay in visible paths inside your home folder, and text writes create new
+files without overwriting.
 
 When cloud reasoning is enabled, task messages and tool results are sent to
 Ollama; approved desktop screenshots can be sent too. Screenshots are held
@@ -206,6 +211,42 @@ diagnosing a model:
 systemctl --user set-environment CLIVE_DEBUG=1
 systemctl --user restart desktop-forge-clive
 ```
+
+## Desktop icons, dock, and top bar
+
+Open **Overall → Desktop Icons** to choose DING's Tiny, Small, Standard, or
+Large desktop grid, switch among installed GNOME icon packs, or add a Solid,
+Frosted Glass, or Liquid Glass backplate. The glass controls include tint,
+strength, automatic or custom label contrast, and an optional monochrome
+artwork finish. **System** removes Desktop Forge's styling and leaves the
+recognizable original artwork unchanged. Icon-pack changes are system-wide,
+so they also appear in Files, the dock, and the app grid.
+
+The glass effect is drawn with a translucent tint, specular gradients, rim,
+and shadow. DING is a separate GTK desktop window and cannot sample the live
+wallpaper for true backdrop blur. Desktop Forge keeps its rules scoped to that
+window and stores them as a marked, reversible import in the GTK 4 user
+stylesheet; unrelated user CSS is preserved. DING must be installed and
+enabled for desktop sizing and materials.
+
+Open **Overall** to customize the GNOME top bar and Dash to Dock independently.
+Each surface has its own background color, opacity, and text/icon color. Leave
+automatic contrast on to choose a readable black or white foreground, or turn
+it off to pick the foreground yourself.
+
+The top bar can sit at the top or bottom of the primary display, use a custom
+height, stay visible, use the dock's intelligent window-overlap rule, or reveal
+only when the pointer reaches its screen edge. Its pressure/hover trigger,
+animation, delays, fullscreen policy, and intelligent-hide mode follow Dash to
+Dock's live behavior settings. Intelligent and auto-hidden bars overlay
+application content, so revealing one never resizes a maximized window.
+Desktop Icons NG receives a separate permanent inset for the bar's shown
+footprint, keeping every desktop icon clear when the bar reveals. Dock controls
+use Dash to Dock's own settings
+for visibility, all four screen edges, icon size, and maximum length. Desktop
+Forge prevents the two surfaces from being assigned to the same horizontal
+edge. If Dash to Dock is unavailable or locked by system policy, the rest of
+the Overall page remains usable.
 
 ## Folder colors
 
@@ -254,8 +295,9 @@ distinct system-style accent colour. Appearance controls can instead pin the
 glass to light or dark, use one accent, adjust blur and opacity, or apply
 custom tint and text colours.
 
-The GNOME top panel and Dash to Dock follow the system appearance as well,
-independently of any light or dark override chosen just for the cards. Card
+The GNOME top panel and Dash to Dock follow the system appearance by default,
+independently of any light or dark override chosen just for the cards. Their
+own colors, opacity and behavior are configurable from **Overall**. Card
 surfaces use a quiet, shadow-free treatment in both appearances.
 
 The Reminders card's **+** button creates reminders directly on the desktop.

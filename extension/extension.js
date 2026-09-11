@@ -9,6 +9,8 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 import {EditMode} from './editMode.js';
+import {DesktopBridge} from './desktopBridge.js';
+import {PanelController} from './panelController.js';
 import {
     MIN_HEIGHT, MIN_WIDTH, clampPosition, monitorForEntry, settlePosition,
     workAreaForEntry,
@@ -106,6 +108,7 @@ export default class DesktopForgeExtension extends Extension {
         this._editMode = null;
         this._rebuildPending = false;
         this._fingerprint = null;
+        this._chromeFingerprint = null;
         this._disabling = false;
         this._interactionId = 0;
         this._windowActors = new Map();
@@ -113,6 +116,8 @@ export default class DesktopForgeExtension extends Extension {
         this._interfaceSettings = new Gio.Settings({
             schema_id: 'org.gnome.desktop.interface',
         });
+        this._panelController = new PanelController(this.uuid);
+        this._desktopBridge = new DesktopBridge();
         this._interfaceSettings.connectObject(
             'changed::color-scheme', () => {
                 this._syncShellTheme();
@@ -175,6 +180,10 @@ export default class DesktopForgeExtension extends Extension {
         this._interfaceSettings?.disconnectObject(this);
         this._interfaceSettings = null;
         this._clearShellTheme();
+        this._panelController?.destroy();
+        this._panelController = null;
+        this._desktopBridge?.destroy();
+        this._desktopBridge = null;
 
         this._configMonitor?.cancel();
         this._configMonitor = null;
@@ -195,7 +204,9 @@ export default class DesktopForgeExtension extends Extension {
 
     _build() {
         const config = readJson(CONFIG_PATH) ?? {widgets: [], style: {}};
-        this._fingerprint = fingerprint(config);
+        this._fingerprint = widgetFingerprint(config);
+        this._chromeFingerprint = chromeFingerprint(config);
+        this._syncShellTheme(config);
         const baseStyle = resolveStyle(config.style ?? {}, this._interfaceSettings);
 
         for (const entry of config.widgets ?? []) {
@@ -311,7 +322,7 @@ export default class DesktopForgeExtension extends Extension {
         });
     }
 
-    _syncShellTheme() {
+    _syncShellTheme(config = null) {
         const uiGroup = Main.uiGroup ?? Main.layoutManager.uiGroup;
         if (!uiGroup)
             return;
@@ -319,6 +330,8 @@ export default class DesktopForgeExtension extends Extension {
         const dark = systemIsDark(colorScheme, Main.getStyleVariant?.());
         uiGroup.remove_style_class_name(dark ? 'df-shell-light' : 'df-shell-dark');
         uiGroup.add_style_class_name(dark ? 'df-shell-dark' : 'df-shell-light');
+        const current = config ?? readJson(CONFIG_PATH) ?? {};
+        this._panelController?.apply(current.chrome ?? {}, dark);
     }
 
     _clearShellTheme() {
@@ -651,7 +664,18 @@ export default class DesktopForgeExtension extends Extension {
         if (!config)
             return;
 
-        const changed = fingerprint(config) !== this._fingerprint;
+        const changed = widgetFingerprint(config) !== this._fingerprint;
+        const chromeChanged = chromeFingerprint(config) !== this._chromeFingerprint;
+
+        if (chromeChanged) {
+            this._chromeFingerprint = chromeFingerprint(config);
+            this._syncShellTheme(config);
+            // Moving or resizing the panel changes the desktop work area.
+            GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                this._positionAll();
+                return GLib.SOURCE_REMOVE;
+            });
+        }
 
         // Filtering must take effect before a deferred layout rebuild, and
         // must discard pending hover data from the previous request.
@@ -764,7 +788,8 @@ export default class DesktopForgeExtension extends Extension {
         if (!config?.widgets)
             return;
         mutate(config);
-        this._fingerprint = fingerprint(config);
+        this._fingerprint = widgetFingerprint(config);
+        this._chromeFingerprint = chromeFingerprint(config);
         writeJson(CONFIG_PATH, config);
     }
 }
@@ -775,9 +800,13 @@ export default class DesktopForgeExtension extends Extension {
  * edit_layout is excluded: entering and leaving edit mode moves the existing
  * actors around, and rebuilding them would throw away the cards mid-edit.
  */
-function fingerprint(config) {
-    const {edit_layout: _editLayout, ...rest} = config ?? {};
+function widgetFingerprint(config) {
+    const {edit_layout: _editLayout, chrome: _chrome, ...rest} = config ?? {};
     return JSON.stringify(rest);
+}
+
+function chromeFingerprint(config) {
+    return JSON.stringify(config?.chrome ?? {});
 }
 
 function resolveStyle(configured, interfaceSettings) {

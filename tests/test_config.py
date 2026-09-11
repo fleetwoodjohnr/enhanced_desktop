@@ -30,13 +30,64 @@ class ConfigMigrationTests(unittest.TestCase):
             path.write_text(json.dumps(legacy), encoding="utf-8")
             with mock.patch.object(config, "CONFIG_PATH", str(path)):
                 loaded = config.load()
-                self.assertEqual(loaded.version, 3)
+                self.assertEqual(loaded.version, 5)
                 self.assertFalse(hasattr(loaded.widgets[0], "always_on_top"))
                 config.save(loaded)
             saved = json.loads(path.read_text(encoding="utf-8"))
 
-        self.assertEqual(saved["version"], 3)
+        self.assertEqual(saved["version"], 5)
         self.assertNotIn("always_on_top", saved["widgets"][0])
+
+    def test_chrome_defaults_and_overrides_round_trip(self) -> None:
+        defaults = config.Config().chrome_options("top_bar")
+        self.assertEqual(defaults["visibility"], "always")
+        self.assertEqual(defaults["position"], "top")
+        self.assertEqual(defaults["height"], 32)
+        self.assertEqual(config.Config().chrome_options("dock")["opacity"], 0.92)
+
+        original = config.Config(chrome={
+            "top_bar": {"position": "bottom", "opacity": 0.4},
+            "dock": {"background": "#123456", "foreground_mode": "custom"},
+        })
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.json"
+            with mock.patch.object(config, "CONFIG_PATH", str(path)):
+                config.save(original)
+                loaded = config.load()
+        self.assertEqual(loaded.chrome, original.chrome)
+        self.assertEqual(loaded.chrome_options("top_bar")["height"], 32)
+
+    def test_hand_edited_chrome_values_are_safe_for_both_uis(self) -> None:
+        candidate = config.Config(chrome={
+            "top_bar": {
+                "visibility": "vanish", "position": "middle", "height": "huge",
+                "opacity": None, "background": "red; injected", "foreground": [],
+            },
+            "dock": {"opacity": 8, "foreground_mode": "unexpected"},
+        })
+        top = candidate.chrome_options("top_bar")
+        dock = candidate.chrome_options("dock")
+        self.assertEqual(top["visibility"], "always")
+        self.assertEqual(top["position"], "top")
+        self.assertEqual(top["height"], 32)
+        self.assertEqual(top["opacity"], 0.96)
+        self.assertNotIn("background", top)
+        self.assertNotIn("foreground", top)
+        self.assertEqual(dock["opacity"], 1.0)
+        self.assertEqual(dock["foreground_mode"], "auto")
+
+    def test_desktop_icon_options_are_normalized_without_changing_defaults(self) -> None:
+        self.assertEqual(config.Config().desktop_icon_options()["material"], "system")
+        candidate = config.Config(desktop_icons={
+            "material": "unknown", "artwork": "painted", "opacity": 7,
+            "tint": "not-css", "foreground": [], "foreground_mode": "maybe",
+        })
+        icons = candidate.desktop_icon_options()
+        self.assertEqual(icons["material"], "system")
+        self.assertEqual(icons["artwork"], "original")
+        self.assertEqual(icons["opacity"], 1.0)
+        self.assertEqual(icons["tint"], "#7fc8ff")
+        self.assertEqual(icons["foreground_mode"], "auto")
 
     def test_default_and_legacy_accent_modes(self) -> None:
         weather = config.Widget(type="weather")
@@ -68,9 +119,8 @@ class ConfigMigrationTests(unittest.TestCase):
                     self.assertEqual(result.provider_options("news")["topic_presets"], expected)
                     self.assertEqual(result.provider_options("news")["feeds"], custom)
                     self.assertEqual(result.provider_options("news")["topics"], ["C++"])
-                    self.assertEqual(json.loads(path.read_text())["version"], 3)
-                    if version == 2:
-                        self.assertEqual(json.loads(Path(str(path) + ".pre-v3").read_text()), raw)
+                    self.assertEqual(json.loads(path.read_text())["version"], 5)
+                    self.assertEqual(json.loads(Path(str(path) + ".pre-v5").read_text()), raw)
 
     def test_news_defaults_are_not_shared_between_config_instances(self) -> None:
         options = config.Config().provider_options("news")

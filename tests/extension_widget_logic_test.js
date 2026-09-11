@@ -1,5 +1,9 @@
 import {systemIsDark} from '../extension/themeLogic.js';
 import {
+    automaticForeground, chromeStylesheet, panelTranslation,
+    pointerInPanelCorridor, resolveChrome, resolveDockBehavior, topBarShouldHide,
+} from '../extension/chromeLogic.js';
+import {
     addAttachmentPaths, displayHostname, headlinePanDistance, headlineTickerDuration,
     rectanglesOverlap, widgetLayer, newsFilterSignature, newsOptions, NEWS_TOPIC_IDS,
     MAX_ATTACHMENTS,
@@ -16,6 +20,54 @@ function assert(condition, message) {
     if (!condition)
         throw new Error(message);
 }
+
+assert(automaticForeground('#ffffff') === '#000000',
+    'automatic contrast must use dark foreground on light surfaces');
+assert(automaticForeground('#000000') === '#ffffff',
+    'automatic contrast must use light foreground on dark surfaces');
+const chrome = resolveChrome({
+    top_bar: {position: 'bottom', height: 200, opacity: -1, background: '#eeeeee'},
+    dock: {foreground_mode: 'custom', foreground: '#abcdef', background: 'bad css'},
+}, false);
+assert(chrome.top_bar.position === 'bottom' && chrome.top_bar.height === 64 &&
+    chrome.top_bar.opacity === 0 && chrome.top_bar.foreground === '#000000',
+    'top-bar settings were not normalized and clamped');
+assert(chrome.dock.background === '#f8fbff' && chrome.dock.foreground === '#abcdef',
+    'dock colors did not fall back safely or preserve a valid manual foreground');
+const chromeCss = chromeStylesheet(chrome);
+assert(chromeCss.includes('rgba(238,238,238,0)') && !chromeCss.includes('bad css'),
+    'generated chrome CSS did not use sanitized values');
+assert(topBarShouldHide('auto', false, false, false),
+    'auto-hide must conceal an unheld top bar');
+assert(topBarShouldHide('intelligent', true, false, false) &&
+    !topBarShouldHide('intelligent', false, false, false),
+    'intelligent hide must follow maximized-window state');
+assert(!topBarShouldHide('auto', true, true, false) &&
+    !topBarShouldHide('auto', true, false, true),
+    'overview and an active interaction must hold the top bar open');
+assert(panelTranslation('top', 32, true) === -31 &&
+    panelTranslation('bottom', 32, true) === 31,
+    'hidden top bars must leave a one-pixel reveal edge');
+const dockBehavior = resolveDockBehavior({
+    animation_time: 0.7, show_delay: -4, hide_delay: 9,
+    require_pressure: false, pressure_threshold: 250,
+    autohide_in_fullscreen: true, intellihide_mode: 'all_windows',
+});
+assert(dockBehavior.animation_time === 0.7 && dockBehavior.show_delay === 0 &&
+    dockBehavior.hide_delay === 5 && !dockBehavior.require_pressure &&
+    dockBehavior.pressure_threshold === 250 && dockBehavior.autohide_in_fullscreen &&
+    dockBehavior.intellihide_mode === 'ALL_WINDOWS',
+    'top-bar behavior did not normalize Dash-to-Dock settings');
+const screen = {x: 0, y: 0, width: 1200, height: 850};
+assert(pointerInPanelCorridor('top', screen, {x: 0, y: 0, width: 1200, height: 32}, 600, 0) &&
+    pointerInPanelCorridor('top', screen, {x: 0, y: 0, width: 1200, height: 32}, 600, 31) &&
+    !pointerInPanelCorridor('top', screen, {x: 0, y: 0, width: 1200, height: 32}, 600, 32),
+    'top reveal corridor must remain stable while the actor moves');
+assert(pointerInPanelCorridor('bottom', screen,
+    {x: 0, y: 810, width: 1200, height: 40}, 600, 849) &&
+    !pointerInPanelCorridor('bottom', screen,
+        {x: 0, y: 810, width: 1200, height: 40}, 600, 809),
+    'bottom reveal corridor must include the screen edge and shown panel');
 
 const stories = Array.from({length: 8}, (_, index) => `story-${index + 1}`);
 

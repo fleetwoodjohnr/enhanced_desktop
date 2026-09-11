@@ -738,8 +738,15 @@ class WidgetsPage(Adw.PreferencesPage):
         return GLib.SOURCE_REMOVE
 
     def _save_now(self, candidate: config.Config | None = None) -> bool:
+        outgoing = candidate if candidate is not None else self._config
+        # Overall owns shell-chrome and desktop-icon settings. This page keeps
+        # a long-lived Config instance for its many controls, so preserve newer
+        # appearance values instead of overwriting them with its startup copy.
+        appearance = config.load()
+        outgoing.chrome = appearance.chrome
+        outgoing.desktop_icons = appearance.desktop_icons
         try:
-            config.save(candidate if candidate is not None else self._config)
+            config.save(outgoing)
         except OSError as exc:
             self._toast(f"Could not save settings: {exc}")
             return False

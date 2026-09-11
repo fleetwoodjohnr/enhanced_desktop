@@ -21,8 +21,8 @@ export default class DesktopForgePreferences extends ExtensionPreferences {
         const status = new Adw.StatusPage({
             title: 'Configured in Desktop Forge',
             description:
-                'Widgets, their positions, colours and data sources are all set ' +
-                'up in the Desktop Forge app.',
+                'Widgets, desktop icon materials, dock and top-bar appearance, ' +
+                'and CLIVE are all set up in the Desktop Forge app.',
             icon_name: 'preferences-desktop-apps-symbolic',
         });
 

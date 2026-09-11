@@ -12,11 +12,12 @@ from __future__ import annotations
 import copy
 import json
 import os
+import re
 import uuid
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 5
 
 CONFIG_DIR = os.path.join(
     os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "desktop-forge"
@@ -222,6 +223,47 @@ DEFAULT_STYLE = {
     "blur_radius": 24,
 }
 
+# GNOME Shell chrome is intentionally independent from widget appearance.  A
+# missing per-surface value means "use the adaptive light/dark default", while
+# the dictionaries stored in config.json contain only the user's overrides.
+DEFAULT_CHROME: dict[str, dict[str, Any]] = {
+    "top_bar": {
+        "visibility": "always",
+        "position": "top",
+        "height": 32,
+        "opacity": 0.96,
+        "foreground_mode": "auto",
+    },
+    "dock": {
+        "opacity": 0.92,
+        "foreground_mode": "auto",
+    },
+}
+
+CHROME_PALETTES = {
+    "light": {
+        "top_bar": {"background": "#fafafb", "foreground": "#222226"},
+        "dock": {"background": "#f8fbff", "foreground": "#172033"},
+    },
+    "dark": {
+        "top_bar": {"background": "#18181b", "foreground": "#ffffff"},
+        "dock": {"background": "#18202c", "foreground": "#f7faff"},
+    },
+}
+
+# DING owns icon geometry and GNOME owns the installed icon theme.  The values
+# here are the appearance layer Desktop Forge adds on top of those native
+# settings.  "system" deliberately produces no managed CSS, so an upgrade
+# never changes an existing desktop until the user chooses a finish.
+DEFAULT_DESKTOP_ICONS: dict[str, Any] = {
+    "material": "system",
+    "tint": "#7fc8ff",
+    "opacity": 0.28,
+    "foreground_mode": "auto",
+    "foreground": "#ffffff",
+    "artwork": "original",
+}
+
 
 @dataclass
 class Config:
@@ -229,6 +271,8 @@ class Config:
     widgets: list[Widget] = field(default_factory=list)
     providers: dict[str, dict[str, Any]] = field(default_factory=dict)
     style: dict[str, Any] = field(default_factory=dict)
+    chrome: dict[str, dict[str, Any]] = field(default_factory=dict)
+    desktop_icons: dict[str, Any] = field(default_factory=dict)
     # Set by the GUI to put the extension into layout-editing mode, and
     # cleared when the user finishes editing. It lives in
     # config.json rather than GSettings because the extension deliberately
@@ -258,6 +302,57 @@ class Config:
         merged.update(widget.style)
         return merged
 
+    def chrome_options(self, surface: str) -> dict[str, Any]:
+        """Return one shell surface's defaults merged with user overrides."""
+        merged = copy.deepcopy(DEFAULT_CHROME.get(surface, {}))
+        overrides = self.chrome.get(surface, {})
+        if isinstance(overrides, dict):
+            merged.update(overrides)
+        opacity = merged.get("opacity", DEFAULT_CHROME.get(surface, {}).get("opacity", 1))
+        merged["opacity"] = max(0.0, min(1.0, float(opacity))) \
+            if isinstance(opacity, (int, float)) else DEFAULT_CHROME[surface]["opacity"]
+        merged["foreground_mode"] = (
+            "custom" if merged.get("foreground_mode") == "custom" else "auto"
+        )
+        for key in ("background", "foreground"):
+            if key in merged and not (
+                isinstance(merged[key], str)
+                and re.fullmatch(r"#[0-9a-fA-F]{6}", merged[key])
+            ):
+                merged.pop(key)
+        if surface == "top_bar":
+            if merged.get("visibility") not in ("always", "intelligent", "auto"):
+                merged["visibility"] = DEFAULT_CHROME[surface]["visibility"]
+            if merged.get("position") not in ("top", "bottom"):
+                merged["position"] = DEFAULT_CHROME[surface]["position"]
+            height = merged.get("height")
+            merged["height"] = max(24, min(64, round(height))) \
+                if isinstance(height, (int, float)) else DEFAULT_CHROME[surface]["height"]
+        return merged
+
+    def desktop_icon_options(self) -> dict[str, Any]:
+        """Return safe desktop-icon material options with defaults filled."""
+        merged = copy.deepcopy(DEFAULT_DESKTOP_ICONS)
+        if isinstance(self.desktop_icons, dict):
+            merged.update(self.desktop_icons)
+        if merged.get("material") not in ("system", "solid", "frosted", "liquid"):
+            merged["material"] = DEFAULT_DESKTOP_ICONS["material"]
+        if merged.get("artwork") not in ("original", "monochrome"):
+            merged["artwork"] = DEFAULT_DESKTOP_ICONS["artwork"]
+        merged["foreground_mode"] = (
+            "custom" if merged.get("foreground_mode") == "custom" else "auto"
+        )
+        opacity = merged.get("opacity")
+        merged["opacity"] = max(0.0, min(1.0, float(opacity))) \
+            if isinstance(opacity, (int, float)) else DEFAULT_DESKTOP_ICONS["opacity"]
+        for key in ("tint", "foreground"):
+            if not (
+                isinstance(merged.get(key), str)
+                and re.fullmatch(r"#[0-9a-fA-F]{6}", merged[key])
+            ):
+                merged[key] = DEFAULT_DESKTOP_ICONS[key]
+        return merged
+
     def active_providers(self) -> set[str]:
         return {
             w.provider for w in self.widgets if w.enabled and w.provider is not None
@@ -269,6 +364,8 @@ class Config:
             "widgets": [asdict(w) for w in self.widgets],
             "providers": self.providers,
             "style": self.style,
+            "chrome": self.chrome,
+            "desktop_icons": self.desktop_icons,
             "edit_layout": self.edit_layout,
         }
 
@@ -323,6 +420,9 @@ def load() -> Config:
         widgets=widgets,
         providers=providers,
         style=raw.get("style", {}) or {},
+        chrome=raw.get("chrome", {}) if isinstance(raw.get("chrome", {}), dict) else {},
+        desktop_icons=(raw.get("desktop_icons", {})
+                       if isinstance(raw.get("desktop_icons", {}), dict) else {}),
         edit_layout=bool(raw.get("edit_layout", False)),
     )
 
@@ -334,11 +434,11 @@ def save(config: Config) -> None:
 def migrate() -> None:
     """Persist an existing legacy config before the upgraded service starts."""
     raw = read_json(CONFIG_PATH)
-    if not raw or raw.get("version", 1) not in (1, 2):
+    if not raw or raw.get("version", 1) >= SCHEMA_VERSION:
         return
     # Keep a one-time backup, including any fields removed by migration.
     try:
-        with open(f"{CONFIG_PATH}.pre-v3", "x", encoding="utf-8") as handle:
+        with open(f"{CONFIG_PATH}.pre-v5", "x", encoding="utf-8") as handle:
             json.dump(raw, handle, indent=2)
     except FileExistsError:
         pass

@@ -4,5 +4,5 @@
   "description": "Renders the widgets configured in Desktop Forge onto the GNOME desktop. Data is supplied by the desktop-forged daemon.",
   "shell-version": ["45", "46", "47", "48", "49", "50"],
   "url": "https://github.com/fleetwoodjohnr",
-  "version": 7
+  "version": 9
 }

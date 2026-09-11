@@ -1,6 +1,7 @@
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
+import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -10,6 +11,7 @@ const sleep = ms => new Promise(resolve => GLib.timeout_add(GLib.PRIORITY_DEFAUL
     resolve();
     return GLib.SOURCE_REMOVE;
 }));
+const DING_USABLE_AREA_ID = '130cbc66-235c-4bd6-8571-98d2d8bba5e2';
 
 function assert(condition, message) {
     if (!condition)
@@ -37,10 +39,20 @@ function descendants(actor) {
 
 export default class SmokeTest extends Extension {
     enable() {
+        this._desktopIconMargins = undefined;
+        this.DesktopIconsUsableArea = {
+            uuid: DING_USABLE_AREA_ID,
+            setMarginsForExtension: (uuid, margins) => {
+                if (uuid === 'desktop-forge@jrf.local')
+                    this._desktopIconMargins = margins;
+            },
+        };
         this._run().catch(error => this._finish({ok: false, error: `${error}`, stack: error.stack}));
     }
 
-    disable() {}
+    disable() {
+        this.DesktopIconsUsableArea = null;
+    }
 
     _finish(result) {
         GLib.file_set_contents(`${GLib.getenv('DF_TEST_DIR')}/result.json`, JSON.stringify(result));
@@ -61,6 +73,10 @@ export default class SmokeTest extends Extension {
         const forge = extension?.stateObj;
         if (!forge?._widgets?.length)
             throw new Error(`Production extension did not start: ${extension?.error}`);
+        const initialIconMargin = this._desktopIconMargins?.['-1'];
+        assert(initialIconMargin?.top === 32 && initialIconMargin.bottom === 0,
+            `Default top bar did not reserve its desktop-icon area: ${
+                JSON.stringify(this._desktopIconMargins)}`);
         const news = forge._widgets.find(r => r.entry.type === 'news').widget;
         const system = forge._widgets.find(r => r.entry.type === 'system').widget;
         const stocks = forge._widgets.find(r => r.entry.type === 'stocks').widget;
@@ -408,7 +424,7 @@ export default class SmokeTest extends Extension {
         const configPath = `${GLib.getenv('XDG_CONFIG_HOME')}/desktop-forge/config.json`;
         const [, configBytes] = Gio.File.new_for_path(configPath).load_contents(null);
         const originalConfig = JSON.parse(new TextDecoder().decode(configBytes));
-        const editingConfig = {...originalConfig, version: 3, edit_layout: true};
+        const editingConfig = {...originalConfig, version: 5, edit_layout: true};
         GLib.file_set_contents(configPath, JSON.stringify(editingConfig));
         await sleep(500);
         assert(forge._editMode, 'Atomic config save did not start layout editing');
@@ -612,9 +628,153 @@ export default class SmokeTest extends Extension {
         assert(Main.modalCount === 0 && Main.modalActorFocusStack.length === 0,
             'Destroying CLIVE left a modal grab behind');
         assert(unsubscribe, 'CLIVE left a subscription after destruction');
+
+        // Chrome-only config changes must update the real panel without
+        // destroying any desktop card.  Exercise bottom placement, sizing,
+        // generated colors and the one-pixel auto-hide reveal edge.
+        const originalPanelPosition = Main.layoutManager.panelBox.get_position();
+        const originalPanelSize = Main.layoutManager.panelBox.get_size();
+        const widgetActors = forge._widgets.map(record => record.widget);
+        const chromeConfigPath = `${GLib.getenv('XDG_CONFIG_HOME')}/desktop-forge/config.json`;
+        const [ok, bytes] = GLib.file_get_contents(chromeConfigPath);
+        assert(ok, 'Could not read config for shell chrome smoke test');
+        const chromeConfig = JSON.parse(new TextDecoder().decode(bytes));
+        chromeConfig.chrome = {
+            top_bar: {
+                visibility: 'auto', position: 'bottom', height: 40,
+                background: '#336699', opacity: 0.5,
+                foreground_mode: 'auto',
+            },
+            dock: {background: '#112233', opacity: 0.4, foreground_mode: 'auto'},
+        };
+        GLib.file_set_contents(chromeConfigPath, JSON.stringify(chromeConfig));
+        await sleep(900);
+        assert(forge._widgets.every((record, index) => record.widget === widgetActors[index]),
+            'A chrome-only config change rebuilt desktop widgets');
+        const monitor = Main.layoutManager.primaryMonitor;
+        assert(Main.layoutManager.panelBox.y === monitor.y + monitor.height - 40 &&
+            Main.layoutManager.panelBox.height === 40,
+            'Bottom top-bar position or height was not applied');
+        assert(Main.layoutManager.panelBox.translation_y === 39,
+            `Auto-hidden bottom bar did not leave a one-pixel reveal edge: ${
+                Main.layoutManager.panelBox.translation_y}, held=${forge._panelController._heldOpen}, menu=${
+                forge._panelController._menuIsOpen()}`);
+        const autoIconMargin = this._desktopIconMargins?.['-1'];
+        assert(autoIconMargin?.top === 0 && autoIconMargin.bottom === 40,
+            `Auto-hidden bottom bar did not reserve its desktop-icon area: ${
+                JSON.stringify(this._desktopIconMargins)}`);
+        assert(forge._panelController._stylesheetLoaded,
+            'Generated shell chrome stylesheet was not loaded');
+        assert(Main.extensionManager.enableExtension('dash-to-dock@micxgx.gmail.com'),
+            'Dash to Dock is not available to the shell smoke test');
+        for (let i = 0; i < 20 &&
+             !Main.extensionManager.lookup('dash-to-dock@micxgx.gmail.com')?.stateObj; i++)
+            await sleep(100);
+        const dockContainer = descendants(global.stage)
+            .find(actor => actor.name === 'dashtodockContainer');
+        assert(dockContainer, 'Dash to Dock did not create its shell actor');
+        const dockBackground = descendants(dockContainer)
+            .find(actor => actor.get_style_class_name?.()?.split(' ').includes('dash-background'));
+        assert(dockBackground, 'Dash-to-Dock background actor was not found');
+        const dockColor = dockBackground.get_theme_node().get_background_color();
+        assert(Math.abs(dockColor.red - 17) <= 2 && Math.abs(dockColor.green - 34) <= 2 &&
+            Math.abs(dockColor.blue - 51) <= 2 && Math.abs(dockColor.alpha - 102) <= 3,
+            `Configured dock color or opacity was not rendered: ${dockColor.to_string()}`);
+        assert(forge._panelController._behavior.animation_time === 0.2 &&
+            forge._panelController._behavior.show_delay === 0.1 &&
+            forge._panelController._behavior.hide_delay === 0.2 &&
+            !forge._panelController._behavior.require_pressure &&
+            forge._panelController._behavior.intellihide_mode === 'MAXIMIZED_WINDOWS',
+            'Top bar did not mirror Dash-to-Dock behavior settings');
+        movePointer(monitor.x + monitor.width / 2, monitor.y + monitor.height - 1);
+        await sleep(350);
+        assert(Main.layoutManager.panelBox.translation_y === 0,
+            'Pointer at the configured edge did not reveal the top bar');
+        await sleep(900);
+        assert(Main.layoutManager.panelBox.translation_y === 0,
+            'Top bar disappeared while the pointer remained over it');
+        movePointer(1100, 700);
+        await sleep(750);
+        assert(Main.layoutManager.panelBox.translation_y === 39,
+            'Auto-hidden top bar did not hide after pointer exit');
+
+        chromeConfig.chrome.top_bar.visibility = 'intelligent';
+        GLib.file_set_contents(chromeConfigPath, JSON.stringify(chromeConfig));
+        await sleep(600);
+        assert(Main.layoutManager.panelBox.translation_y === 0,
+            'Intelligent top bar hid without a maximized window');
+        const intelligentIconMargin = this._desktopIconMargins?.['-1'];
+        assert(intelligentIconMargin?.top === 0 && intelligentIconMargin.bottom === 40,
+            `Intelligent bottom bar did not retain its desktop-icon area: ${
+                JSON.stringify(this._desktopIconMargins)}`);
+        const intelligentProcess = launcher.spawnv(
+            ['python3', `${GLib.getenv('DF_TEST_ROOT')}/tests/shell-smoke/window.py`]);
+        let intelligentWindow;
+        for (let i = 0; i < 40 && !intelligentWindow; i++) {
+            await sleep(100);
+            intelligentWindow = global.get_window_actors().map(actor => actor.meta_window)
+                .find(candidate => candidate?.title === 'DF repaint test');
+        }
+        assert(intelligentWindow, 'Intelligent-hide test window did not open');
+        const bridgeWindows = JSON.parse(forge._desktopBridge.Windows());
+        const bridgeWindow = bridgeWindows.find(candidate => candidate.title === 'DF repaint test');
+        assert(bridgeWindow?.desktop_id,
+            'Desktop bridge did not publish a stable app ID for the test window');
+        assert(forge._desktopBridge.Activate(bridgeWindow.desktop_id),
+            'Desktop bridge could not activate the test application');
+        const bridgeProbe = uiLauncher.spawnv(
+            ['python3', `${GLib.getenv('DF_TEST_ROOT')}/tests/clive_shell_smoke.py`]);
+        const bridgeOutput = await new Promise((resolve, reject) => {
+            bridgeProbe.communicate_utf8_async(null, null, (process, result) => {
+                try { resolve(process.communicate_utf8_finish(result)[1]); } catch (error) { reject(error); }
+            });
+        });
+        assert(bridgeProbe.get_successful(), `CLIVE could not read the Shell bridge over D-Bus: ${bridgeOutput}`);
+        intelligentWindow.activate(global.get_current_time());
+        await sleep(150);
+        const overlayWorkArea = global.workspace_manager.get_active_workspace()
+            .get_work_area_for_monitor(Main.layoutManager.primaryIndex);
+        intelligentWindow.maximize(Meta.MaximizeFlags.BOTH);
+        await sleep(800);
+        assert(Main.layoutManager.panelBox.translation_y === 39,
+            `Intelligent top bar did not hide for a maximized primary-monitor window: maximized=${
+                intelligentWindow.is_maximized()}, flags=${intelligentWindow.get_maximize_flags()}, monitor=${
+                intelligentWindow.get_monitor()}, visible=${
+                intelligentWindow.showing_on_its_workspace()}, detected=${
+                forge._panelController._primaryHasMaximizedWindow()}, held=${
+                forge._panelController._heldOpen}, overview=${Main.overview.visible}, translation=${
+                Main.layoutManager.panelBox.translation_y}`);
+        assert(forge._panelController._strut === false,
+            'Intelligent top bar unexpectedly reserved a work-area strut');
+        movePointer(monitor.x + monitor.width / 2, monitor.y + monitor.height - 1);
+        await sleep(350);
+        assert(Main.layoutManager.panelBox.translation_y === 0,
+            'Intelligent top bar did not reveal over the maximized application');
+        const revealedWorkArea = global.workspace_manager.get_active_workspace()
+            .get_work_area_for_monitor(Main.layoutManager.primaryIndex);
+        assert(JSON.stringify([revealedWorkArea.x, revealedWorkArea.y,
+            revealedWorkArea.width, revealedWorkArea.height]) ===
+            JSON.stringify([overlayWorkArea.x, overlayWorkArea.y,
+                overlayWorkArea.width, overlayWorkArea.height]),
+            'Revealing the intelligent top bar resized the application work area');
+        movePointer(1100, 700);
+        await sleep(750);
+        intelligentWindow.unmaximize(Meta.MaximizeFlags.BOTH);
+        await sleep(500);
+        assert(Main.layoutManager.panelBox.translation_y === 0,
+            'Intelligent top bar did not return after unmaximizing the window');
+        intelligentWindow.delete(global.get_current_time());
+        await sleep(300);
+
         forge.disable();
         assert(forge._windowActors.size === 0 && forge._widgets.length === 0 && !forge._interactionId,
             'Extension teardown retained actors or queued work');
+        assert(this._desktopIconMargins === null,
+            'Extension teardown retained its Desktop Icons NG margin');
+        assert(Main.layoutManager.panelBox.translation_y === 0 &&
+            JSON.stringify(Main.layoutManager.panelBox.get_position()) === JSON.stringify(originalPanelPosition) &&
+            JSON.stringify(Main.layoutManager.panelBox.get_size()) === JSON.stringify(originalPanelSize),
+            'Extension teardown did not restore the original panel geometry');
         forge.enable();
         await sleep(500);
         this._finish({ok: true, metrics, cycles, batteryRect: [bx, by, bw, bh]});

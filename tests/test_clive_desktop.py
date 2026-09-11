@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 try:
+    from desktop_forge.clive import desktop as desktop_module
     from gi.repository import GLib
     from desktop_forge.clive.desktop import Desktop
     from desktop_forge.clive.models import Cancelled
@@ -56,6 +57,68 @@ class DesktopTests(unittest.TestCase):
         with self.assertRaises(Cancelled):
             desktop.call("key", app="test", key="Return")
         desktop.bus.call_sync.assert_not_called()
+
+    def test_text_fallback_types_unicode_and_returns_a_fresh_frame(self):
+        desktop = self.desktop()
+        result = desktop.call("type_text", app="org.example.Editor.desktop", text="Hi ✓")
+        calls = desktop.bus.call_sync.call_args_list
+        # Each character is pressed and released through the portal.
+        self.assertEqual(len(calls), 8)
+        self.assertTrue(all(call.args[3] == "NotifyKeyboardKeysym" for call in calls))
+        self.assertEqual(result["screenshot"], "after")
+
+    def test_shortcut_releases_modifiers_in_reverse_order(self):
+        desktop = self.desktop()
+        desktop.call("shortcut", app="org.example.Editor.desktop", key="s",
+                     modifiers=["Control", "Shift"])
+        events = [call.args[4].unpack()[-2:] for call in desktop.bus.call_sync.call_args_list]
+        self.assertEqual(events, [
+            (0xffe3, 1), (0xffe1, 1), (ord("s"), 1), (ord("s"), 0),
+            (0xffe1, 0), (0xffe3, 0),
+        ])
+
+    def test_visual_controls_use_shell_focus_without_accessibility(self):
+        desktop = Desktop.__new__(Desktop)
+        desktop.cancel = threading.Event()
+        desktop.shell = Mock()
+        desktop.shell.windows.return_value = [{
+            "desktop_id": "org.libreoffice.LibreOffice.writer.desktop",
+            "focused": True,
+        }]
+        self.assertTrue(desktop._active("org.libreoffice.LibreOffice.writer.desktop"))
+        desktop.shell.windows.return_value[0]["focused"] = False
+        with self.assertRaisesRegex(RuntimeError, "not active"):
+            desktop._active("org.libreoffice.LibreOffice.writer.desktop")
+
+    def test_launch_wait_accepts_libreoffice_shared_window_identity(self):
+        desktop = Desktop.__new__(Desktop)
+        desktop.cancel = Mock()
+        desktop.cancel.is_set.return_value = False
+        desktop.cancel.wait.return_value = False
+        desktop.shell = Mock()
+        desktop.shell.windows.side_effect = [[], [{
+            "desktop_id": "libreoffice-startcenter.desktop",
+            "wm_class": "libreoffice",
+        }]]
+        self.assertTrue(desktop.wait_for_app("libreoffice-calc.desktop", timeout=1))
+
+    def test_missing_accessibility_is_a_recoverable_screenshot_fallback(self):
+        desktop = Desktop.__new__(Desktop)
+        desktop.cancel = threading.Event()
+        desktop._target_windows = Mock(return_value=[{
+            "desktop_id": "libreoffice-startcenter.desktop",
+        }])
+        desktop._app = Mock(side_effect=ValueError("no accessibility tree"))
+        with patch.object(desktop_module.time, "monotonic", side_effect=[0, 0, 11]):
+            result = desktop.inspect("libreoffice-calc.desktop")
+        self.assertEqual(result, {
+            "app": "libreoffice-calc.desktop",
+            "accessibility_available": False,
+            "reason": "accessibility_unavailable",
+            "fallback": "desktop_screenshot",
+            "elements": [],
+            "truncated": False,
+        })
 
     def test_portal_denial_is_reported_and_subscription_removed(self):
         desktop = self.desktop()

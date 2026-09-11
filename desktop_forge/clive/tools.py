@@ -12,7 +12,14 @@ from .policy import check_scope, local_path
 
 STRING = {"type": "string", "minLength": 1, "maxLength": 2000}
 TEXT = {"type": "string", "maxLength": 50000}
+INPUT_TEXT = {"type": "string", "minLength": 1, "maxLength": 8000}
 COORD = {"type": "number", "minimum": 0, "maximum": 1000}
+NAVIGATION_KEYS = ["Tab", "Return", "Escape", "BackSpace", "Delete", "Home", "End",
+                   "PageUp", "PageDown", "Left", "Right", "Up", "Down"]
+SHORTCUT_KEY = {"anyOf": [
+    {"type": "string", "enum": NAVIGATION_KEYS},
+    {"type": "string", "minLength": 1, "maxLength": 1},
+]}
 
 
 def spec(name, description, properties, required=None):
@@ -24,8 +31,9 @@ def spec(name, description, properties, required=None):
 SPECS = [
     spec("web_search", "Search the live web. Cite the returned URLs.", {"query": STRING}),
     spec("web_fetch", "Read a public web page.", {"url": STRING}),
-    spec("apps_list", "List installed applications, desktop IDs, and running accessibility names.", {}),
-    spec("app_launch", "Launch an installed app by its desktop ID; terminal apps are excluded.", {"desktop_id": STRING}),
+    spec("apps_list", "List installed graphical applications and running windows by stable desktop ID.", {}),
+    spec("app_launch", "Launch an installed graphical app by desktop ID and wait for its window; terminal apps are excluded.", {"desktop_id": STRING}),
+    spec("app_focus", "Focus a running approved graphical app by desktop ID.", {"desktop_id": STRING}),
     spec("open_url", "Open a public URL in the default browser.", {"url": STRING}),
     spec("file_search", "Find visible files by case-insensitive filename within a directory. Maximum 100 results.", {"directory": STRING, "query": STRING}),
     spec("file_read", "Read a UTF-8 text file, at most 50 KB.", {"path": STRING}),
@@ -40,7 +48,7 @@ SPECS = [
     spec("reminder_add", "Create a reminder. due is local ISO date/time, repeat is none/daily/weekly/monthly.",
          {"text": STRING, "due": STRING, "repeat": {"type": "string", "enum": ["none", "daily", "weekly", "monthly"]}}, ["text", "due"]),
     spec("reminder_complete", "Mark a reminder complete.", {"id": STRING}),
-    spec("desktop_inspect", "Read the accessibility tree of a running app. Returns temporary element IDs and available actions.", {"app": STRING}),
+    spec("desktop_inspect", "Read an app's accessibility tree by desktop ID. Returns availability, temporary element IDs and actions, or a recoverable screenshot fallback.", {"app": STRING}),
     spec("desktop_action", "Invoke an action named in the most recent accessibility tree. Inspect again after each action.", {"app": STRING, "element": STRING, "action": STRING}),
     spec("desktop_type", "Set text in an editable accessibility element. Inspect again afterwards.", {"app": STRING, "element": STRING, "text": TEXT}),
     spec("desktop_screenshot", "Capture the shared monitor while the specified app is active. Returns a transient image and screenshot ID.", {"app": STRING}),
@@ -48,8 +56,16 @@ SPECS = [
          {"app": STRING, "screenshot": STRING, "x": COORD, "y": COORD}),
     spec("desktop_scroll", "Scroll in the active app following a screenshot.", {"app": STRING, "screenshot": STRING,
          "dy": {"type": "number", "minimum": -1000, "maximum": 1000}}),
-    spec("desktop_key", "Press a navigation key in the active app: Tab, Return, Escape, BackSpace, or arrow keys.",
-         {"app": STRING, "key": {"type": "string", "enum": ["Tab", "Return", "Escape", "BackSpace", "Left", "Right", "Up", "Down"]}}),
+    spec("desktop_key", "Press one supported navigation key in the focused approved app.",
+         {"app": STRING, "key": {"type": "string", "enum": NAVIGATION_KEYS}}),
+    spec("desktop_type_text", "Type Unicode text into the focused approved app using GNOME's consented input session.",
+         {"app": STRING, "text": INPUT_TEXT}),
+    spec("desktop_shortcut", "Press a shortcut in the focused approved app. key is one character or a supported navigation key.",
+         {"app": STRING,
+          "key": SHORTCUT_KEY,
+          "modifiers": {"type": "array", "items": {"type": "string",
+              "enum": ["Control", "Alt", "Shift", "Super"]}, "uniqueItems": True, "maxItems": 4}},
+         ["app", "key"]),
 ]
 BY_NAME = {s["function"]["name"]: s for s in SPECS}
 # Tools that only observe. Everything absent from this set writes a file, moves
@@ -67,17 +83,50 @@ class InvalidTool(ValueError):
 
 def installed_apps():
     from gi.repository import Gio
-    result = []
+    result, seen = [], set()
     for app in Gio.AppInfo.get_all():
-        if not isinstance(app, Gio.DesktopAppInfo) or not app.should_show() or terminal_app(app):
+        if (not isinstance(app, Gio.DesktopAppInfo) or not app.should_show() or
+                terminal_app(app) or blocked_surface(app.get_id() or "")):
             continue
-        result.append({"desktop_id": app.get_id(), "name": app.get_display_name()})
+        desktop_id = app.get_id()
+        if not desktop_id or desktop_id in seen:
+            continue
+        seen.add(desktop_id)
+        result.append({
+            "desktop_id": desktop_id,
+            "name": app.get_display_name() or desktop_id,
+            "description": app.get_description() or "",
+            "categories": app.get_categories() or "",
+            "startup_wm_class": app.get_startup_wm_class() or "",
+        })
     return sorted(result, key=lambda a: a["name"].casefold())
 
 
 def terminal_app(app):
     categories = app.get_categories() or ""
     return "TerminalEmulator" in categories or app.get_boolean("Terminal")
+
+
+def blocked_surface(desktop_id):
+    lowered = desktop_id.casefold()
+    return any(term in lowered for term in (
+        "gnome-shell", "org.gnome.shell", "polkit", "authentication-agent",
+        "screen-lock", "screenshield"
+    ))
+
+
+def controllable_app(desktop_id):
+    """Resolve a user-facing graphical app and reject privileged surfaces."""
+    from gi.repository import Gio
+    if blocked_surface(desktop_id):
+        raise ValueError("Authentication and lock-screen surfaces are unavailable")
+    try:
+        app = Gio.DesktopAppInfo.new(desktop_id)
+    except TypeError:
+        app = None
+    if not app or not app.should_show() or terminal_app(app):
+        raise ValueError("Application is unavailable or is a terminal")
+    return app
 
 
 class Tools:
@@ -104,14 +153,16 @@ class Tools:
         if name.startswith("web_"):
             return self.models.web(name, a)
         if name == "apps_list":
-            return {"installed": installed_apps(), "running": self.desktop.app_names()}
+            return {"installed": installed_apps(), "running": self.desktop.running_apps()}
         if name == "app_launch":
-            app = Gio.DesktopAppInfo.new(a["desktop_id"])
-            if not app or terminal_app(app):
-                raise ValueError("Application is unavailable or is a terminal")
+            app = controllable_app(a["desktop_id"])
             if not app.launch([], None):
                 raise RuntimeError("Application could not be launched")
-            return {"launched": a["desktop_id"]}
+            return {"launched": a["desktop_id"],
+                    "ready": self.desktop.wait_for_app(a["desktop_id"], timeout=10)}
+        if name == "app_focus":
+            controllable_app(a["desktop_id"])
+            return self.desktop.focus(a["desktop_id"])
         if name == "open_url":
             Gio.AppInfo.launch_default_for_uri(a["url"], None)
             return {"opened": a["url"]}
@@ -181,5 +232,10 @@ class Tools:
             reminders.update(a["id"], done=True)
             return {"completed": a["id"]}
         if name.startswith("desktop_"):
-            return self.desktop.call(name.removeprefix("desktop_"), **a)
+            controllable_app(a["app"])
+            operation = {
+                "desktop_type_text": "type_text",
+                "desktop_shortcut": "shortcut",
+            }.get(name, name.removeprefix("desktop_"))
+            return self.desktop.call(operation, **a)
         raise ValueError("Unknown tool")

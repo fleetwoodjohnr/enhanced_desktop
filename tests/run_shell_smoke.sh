@@ -21,6 +21,12 @@ cp "$test_root/tests/shell-smoke/config.json" "$XDG_CONFIG_HOME/desktop-forge/co
 ln -s "$test_root/extension" "$XDG_DATA_HOME/gnome-shell/extensions/desktop-forge@jrf.local"
 ln -s "$test_root/tests/shell-smoke" "$XDG_DATA_HOME/gnome-shell/extensions/desktop-forge-smoke@jrf.local"
 gsettings set org.gnome.shell enabled-extensions "['desktop-forge@jrf.local', 'desktop-forge-smoke@jrf.local']"
+gsettings set org.gnome.shell.extensions.dash-to-dock dock-position 'LEFT'
+gsettings set org.gnome.shell.extensions.dash-to-dock animation-time 0.2
+gsettings set org.gnome.shell.extensions.dash-to-dock show-delay 0.1
+gsettings set org.gnome.shell.extensions.dash-to-dock hide-delay 0.2
+gsettings set org.gnome.shell.extensions.dash-to-dock require-pressure-to-show false
+gsettings set org.gnome.shell.extensions.dash-to-dock intellihide-mode 'MAXIMIZED_WINDOWS'
 gsettings set org.gnome.shell welcome-dialog-last-shown-version '50.4'
 gsettings set org.gnome.desktop.interface enable-animations false
 gsettings set org.gnome.desktop.interface enable-hot-corners false

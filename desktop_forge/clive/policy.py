@@ -54,8 +54,8 @@ def check_scope(name: str, arguments: dict, plan: dict):
             raise ScopeChanged(f"Access to {path} was not in the approved task")
     if "app" in arguments and arguments["app"] not in permissions["apps"]:
         raise ScopeChanged(f"Control of {arguments['app']} was not in the approved task")
-    if name == "app_launch" and arguments["desktop_id"] not in permissions["apps"]:
-        raise ScopeChanged(f"Launching {arguments['desktop_id']} was not in the approved task")
+    if "desktop_id" in arguments and arguments["desktop_id"] not in permissions["apps"]:
+        raise ScopeChanged(f"Use of {arguments['desktop_id']} was not in the approved task")
     if name in ("web_search", "web_fetch", "open_url"):
         if not permissions["web"]:
             raise ScopeChanged("Web access was not in the approved task")

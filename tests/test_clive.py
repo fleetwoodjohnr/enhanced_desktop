@@ -7,17 +7,18 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from desktop_forge.clive import agent as agent_module
-from desktop_forge.clive.agent import Agent
+from desktop_forge.clive.agent import (APP_AUTOMATION_TOOLS, Agent,
+                                       complete_app_permissions)
 from desktop_forge.clive.models import (ModelUnavailable, Models, generation_schema,
                                         safe_message)
 from desktop_forge.clive.policy import (ScopeChanged, auto_approved, check_scope,
                                         local_path, public_url)
 from desktop_forge.clive.settings import DEFAULTS
 from desktop_forge.clive.storage import History
-from desktop_forge.clive.tools import BY_NAME, READ_ONLY
+from desktop_forge.clive.tools import BY_NAME, READ_ONLY, Tools, blocked_surface
 
 try:
     import langgraph.graph
@@ -52,6 +53,9 @@ class AgentTests(unittest.TestCase):
         self.addCleanup(self.home.stop)
         self.addCleanup(self.tmp.cleanup)
         self.agents = []
+        # Agent behavior must never inherit the developer machine's live CLIVE
+        # approval choice (notably Auto-approve everything).
+        self.settings()
 
     def tearDown(self):
         for agent in self.agents:
@@ -228,6 +232,57 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(state["messages"][-1]["content"], "Hello! How can I help you today?")
         self.assertEqual(state["actions"], [])
 
+    def test_every_graphical_app_is_in_the_compact_planner_catalog(self):
+        catalog = [
+            {"desktop_id": f"org.example.App{index}.desktop", "name": f"App {index}",
+             "description": "large detail that should not enter the planner"}
+            for index in range(15)
+        ]
+        catalog.append({"desktop_id": "libreoffice-calc.desktop",
+                        "name": "LibreOffice Calc", "description": "Spreadsheet"})
+        seen = []
+
+        class RecordingModels:
+            def __init__(self, settings, cancel, report):
+                self.cancel = cancel
+            def chat(self, messages, tools=None, schema=None):
+                seen.append(messages[0]["content"])
+                return {"content": json.dumps({"answer": "Ready."})}
+            def stop(self):
+                self.cancel.set()
+
+        agent = Agent(self.root / "catalog", model_factory=RecordingModels,
+                      desktop_factory=FakeDesktop, apps_factory=lambda: catalog)
+        self.agents.append(agent)
+        agent.submit("Hello")
+        self.wait(agent)
+        self.assertIn("libreoffice-calc.desktop", seen[0])
+        self.assertIn("org.example.App0.desktop", seen[0])
+        self.assertNotIn("large detail", seen[0])
+
+    def test_gui_action_plan_gets_complete_app_scoped_fallback_permissions(self):
+        gui = plan(["desktop_type_text"])
+        gui["permissions"]["apps"] = ["libreoffice-calc.desktop"]
+        completed = complete_app_permissions(gui)
+        self.assertEqual(completed["permissions"]["tools"],
+                         ["desktop_type_text", *[name for name in APP_AUTOMATION_TOOLS
+                                                if name != "desktop_type_text"]])
+        self.assertEqual(completed["permissions"]["apps"],
+                         ["libreoffice-calc.desktop"])
+
+    def test_app_launch_waits_for_window_readiness(self):
+        desktop = Mock()
+        desktop.wait_for_app.return_value = True
+        launcher = Mock()
+        launcher.launch.return_value = True
+        approved = plan(["app_launch"])
+        approved["permissions"]["apps"] = ["libreoffice-calc.desktop"]
+        with patch("desktop_forge.clive.tools.controllable_app", return_value=launcher):
+            result = Tools(None, desktop, threading.Event()).call(
+                "app_launch", {"desktop_id": "libreoffice-calc.desktop"}, approved)
+        self.assertEqual(result, {"launched": "libreoffice-calc.desktop", "ready": True})
+        desktop.wait_for_app.assert_called_once_with("libreoffice-calc.desktop", timeout=10)
+
     # -- approval modes ----------------------------------------------------
 
     def test_read_only_mode_runs_a_reading_task_without_stopping(self):
@@ -373,10 +428,11 @@ class ApprovalModeTests(unittest.TestCase):
         self.assertFalse(auto_approved(reading, "whatever", READ_ONLY))
 
     def test_nothing_that_acts_is_treated_as_read_only(self):
-        for name in ("file_write", "file_move", "file_trash", "app_launch", "open_url",
+        for name in ("file_write", "file_move", "file_trash", "app_launch", "app_focus", "open_url",
                      "todo_add", "todo_update", "reminder_add", "reminder_complete",
                      "desktop_action", "desktop_type", "desktop_screenshot",
-                     "desktop_click", "desktop_scroll", "desktop_key"):
+                     "desktop_click", "desktop_scroll", "desktop_key",
+                     "desktop_type_text", "desktop_shortcut"):
             self.assertNotIn(name, READ_ONLY, name)
 
 
@@ -411,6 +467,24 @@ class PolicyAndStorageTests(unittest.TestCase):
         from desktop_forge.clive.tools import BY_NAME
         self.assertNotIn("shell", BY_NAME)
         self.assertNotIn("exec", BY_NAME)
+
+    def test_every_desktop_id_stays_inside_the_approved_app_scope(self):
+        approved = plan(["app_focus"])
+        approved["permissions"]["apps"] = ["org.mozilla.thunderbird.desktop"]
+        check_scope("app_focus", {"desktop_id": "org.mozilla.thunderbird.desktop"}, approved)
+        with self.assertRaises(ScopeChanged):
+            check_scope("app_focus", {"desktop_id": "libreoffice-writer.desktop"}, approved)
+
+    def test_authentication_surfaces_are_not_controllable_apps(self):
+        from desktop_forge.clive.tools import controllable_app
+        with self.assertRaisesRegex(ValueError, "Authentication"):
+            controllable_app("org.gnome.Shell.desktop")
+
+    def test_catalog_filter_and_runtime_policy_share_privileged_exclusions(self):
+        for desktop_id in ("org.gnome.Shell.desktop", "org.example.Polkit.desktop",
+                           "screen-lock.desktop"):
+            self.assertTrue(blocked_surface(desktop_id), desktop_id)
+        self.assertFalse(blocked_surface("libreoffice-calc.desktop"))
 
     def test_paths_resolve_symlinks_before_permissions(self):
         with tempfile.TemporaryDirectory() as temp:

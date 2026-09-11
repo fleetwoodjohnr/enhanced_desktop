@@ -14,6 +14,7 @@ import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 from gi.repository import Adw, Gio, GLib, Gtk
+from desktop_forge import config
 from desktop_forge.backend.folder_colors import FolderColors, PRESETS
 from desktop_forge.pages.overall import FolderColorDialog, OverallPage
 from desktop_forge.window import DesktopForgeWindow
@@ -32,6 +33,12 @@ def capture(widget, name):
     snapshot = Gtk.Snapshot.new()
     paintable.snapshot(snapshot, widget.get_width(), widget.get_height())
     node = snapshot.to_node()
+    # GTK 4.22 can decline to snapshot a foreign/headless toplevel even after
+    # it has allocated successfully. Functional assertions still exercise the
+    # page; the PNG is only an optional debugging artifact.
+    if node is None:
+        results.setdefault('snapshots', 'unavailable in this compositor')
+        return
     texture = widget.get_native().get_renderer().render_texture(node, None)
     texture.save_to_png(str(test_dir / name))
 
@@ -69,12 +76,33 @@ def activate(application):
         page = window._pages['overall']
         assert isinstance(page, OverallPage), 'Overall page failed to load'
         assert window._stack.get_visible_child() is page, 'Overall is not the first tab'
+        assert page._top_group.get_title() == 'Top Bar', 'Top-bar controls are missing'
+        assert page._dock_group.get_title() == 'Dock', 'Dock controls are missing'
+        assert page._icons_group.get_title() == 'Desktop Icons', 'Desktop icon controls are missing'
+        assert page._icon_material.get_model().get_n_items() == 4, 'Glass material presets are missing'
+        assert page._icon_artwork.get_model().get_n_items() == 2, 'Artwork finishes are missing'
+        assert page._desktop_icon_size.get_sensitive() == page._desktop_icons.ding_available
+        assert page._top_height.get_value() == 32, 'Top-bar default height is incorrect'
+        if page._dock:
+            # The default dock is at the bottom: assigning the bar there must
+            # be rejected, after which moving the dock left is valid.
+            page._top_position.set_selected(1)
+            assert page._top_position.get_selected() == 0, 'Conflicting panel edge was accepted'
+            page._dock_position.set_selected(3)
+            assert page._dock.read().position == 'LEFT', 'Dock position did not reach GSettings'
+        page._top_visibility.set_selected(1)
+        page._top_height.set_value(36)
+        page._auto_rows['top_bar'].set_active(False)
         window.present()
         results['saved_folders'] = [a.uri, b.uri]
 
         def show_editor():
             try:
                 assert len(page._rows) == 2
+                chrome = config.load().chrome_options('top_bar')
+                assert chrome['visibility'] == 'intelligent', 'Top-bar visibility was not saved'
+                assert chrome['height'] == 36, 'Top-bar height was not saved'
+                assert chrome['foreground_mode'] == 'custom', 'Manual foreground mode was not saved'
                 capture(window, 'overall-light.png')
                 dialog = FolderColorDialog(Gio.File.new_for_uri(a.uri), a.color,
                     lambda color, editor: page._operate(lambda: store.apply(a.uri, color), 'Applied', editor))

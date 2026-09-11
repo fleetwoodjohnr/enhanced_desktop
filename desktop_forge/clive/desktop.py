@@ -16,20 +16,24 @@ gi.require_version("Atspi", "2.0")
 gi.require_version("Gst", "1.0")
 gi.require_version("GstVideo", "1.0")
 gi.require_version("GdkPixbuf", "2.0")
-from gi.repository import Atspi, GdkPixbuf, Gio, GLib, Gst, GstVideo
+gi.require_version("Gdk", "4.0")
+from gi.repository import Atspi, Gdk, GdkPixbuf, Gio, GLib, Gst, GstVideo
 
 from .models import Cancelled
+from .shell import ShellBridge
 
 PORTAL = "org.freedesktop.portal.Desktop"
 PORTAL_PATH = "/org/freedesktop/portal/desktop"
 REMOTE = "org.freedesktop.portal.RemoteDesktop"
 CAST = "org.freedesktop.portal.ScreenCast"
+APP_READY_TIMEOUT = 10
 
 
 class Desktop:
-    def __init__(self, cancel: threading.Event):
+    def __init__(self, cancel: threading.Event, shell=None):
         self.cancel = cancel
         self.bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        self.shell = shell or ShellBridge(self.bus)
         self.session = None
         self.pending = None
         self.pipeline = None
@@ -49,11 +53,97 @@ class Desktop:
         desktop = Atspi.get_desktop(0)
         return [desktop.get_child_at_index(i).get_name() for i in range(desktop.get_child_count())]
 
+    def running_apps(self):
+        """Return Shell's stable desktop IDs, falling back to AT-SPI labels."""
+        try:
+            windows = self.shell.windows()
+        except RuntimeError:
+            return [{"desktop_id": "", "name": name, "accessibility_name": name,
+                     "focused": False} for name in self.app_names()]
+        seen = set()
+        result = []
+        for window in sorted(windows, key=lambda row: not row.get("focused", False)):
+            desktop_id = window["desktop_id"]
+            if desktop_id in seen:
+                continue
+            seen.add(desktop_id)
+            result.append(window)
+        return result
+
+    def wait_for_app(self, desktop_id, timeout=APP_READY_TIMEOUT):
+        """Wait for launch registration without ever repeating the launch."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if self.cancel.is_set():
+                raise Cancelled()
+            try:
+                if any(self._matches_target(desktop_id, row) for row in self.shell.windows()):
+                    return True
+            except RuntimeError:
+                # The Shell bridge may be unavailable on an old installation;
+                # AT-SPI can still prove that an accessible app has started.
+                try:
+                    self._app(desktop_id)
+                except ValueError:
+                    pass
+                else:
+                    return True
+            self.cancel.wait(0.1)
+        return False
+
+    def focus(self, desktop_id):
+        target = desktop_id
+        windows = self.shell.windows()
+        if not any(row.get("desktop_id") == target for row in windows):
+            alias = next((row.get("desktop_id") for row in windows
+                          if self._matches_target(desktop_id, row)), None)
+            target = alias or target
+        if not self.shell.activate(target):
+            raise ValueError(f"{desktop_id} is not running")
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            if self.cancel.is_set():
+                raise Cancelled()
+            if any(row.get("focused") and self._matches_target(desktop_id, row)
+                   for row in self.shell.windows()):
+                return {"focused": desktop_id}
+            self.cancel.wait(0.05)
+        raise RuntimeError("The application did not take focus")
+
+    def _target_windows(self, desktop_id):
+        try:
+            return [row for row in self.shell.windows()
+                    if self._matches_target(desktop_id, row)]
+        except RuntimeError:
+            return []
+
+    @staticmethod
+    def _matches_target(desktop_id, window):
+        running_id = window.get("desktop_id", "")
+        if running_id == desktop_id:
+            return True
+        try:
+            info = Gio.DesktopAppInfo.new(desktop_id)
+        except TypeError:
+            info = None
+        startup = (info.get_startup_wm_class() if info else "") or ""
+        classes = {str(window.get(key, "")).casefold()
+                   for key in ("wm_class", "wm_class_instance")}
+        if startup and startup.casefold() in classes:
+            return True
+        # LibreOffice may group all module windows under its start-center ID
+        # even when Writer/Calc/Impress was the desktop entry that launched it.
+        requested = desktop_id.casefold()
+        running = running_id.casefold()
+        libre_prefixes = ("libreoffice-", "org.libreoffice.libreoffice")
+        return (requested.startswith(libre_prefixes) and running.startswith(libre_prefixes))
+
     def _app(self, name):
         desktop = Atspi.get_desktop(0)
+        target_pids = {row.get("pid") for row in self._target_windows(name) if row.get("pid")}
         for i in range(desktop.get_child_count()):
             app = desktop.get_child_at_index(i)
-            if app.get_name() == name:
+            if app.get_name() == name or app.get_process_id() in target_pids:
                 pid = app.get_process_id()
                 try:
                     executable = os.path.basename(os.readlink(f"/proc/{pid}/exe")).lower()
@@ -62,9 +152,22 @@ class Desktop:
                 if any(term in executable for term in ("terminal", "ptyxis", "konsole", "xterm", "alacritty", "kitty", "wezterm")):
                     raise ValueError("Terminal control is not enabled in CLIVE")
                 return app
-        raise ValueError(f"{name} is not running or does not expose accessibility controls")
+        raise ValueError(
+            f"{name} does not expose accessibility controls; use screenshot controls instead"
+        )
 
     def _active(self, name):
+        try:
+            windows = self.shell.windows()
+        except RuntimeError:
+            windows = None
+        if windows is not None:
+            if any(row.get("focused") and self._matches_target(name, row) for row in windows):
+                return True
+            raise RuntimeError("The approved application is not active. Focus it and retry.")
+
+        # An old or disabled extension can still operate applications that do
+        # publish a complete accessibility tree.
         app = self._app(name)
         for i in range(min(app.get_child_count(), 30)):
             child = app.get_child_at_index(i)
@@ -73,7 +176,34 @@ class Desktop:
         raise RuntimeError("The approved application is not active. Focus it and start a new task.")
 
     def inspect(self, app):
-        root = self._app(app)
+        """Inspect an app, or return a safe route to visual control.
+
+        Launching and accessibility registration are asynchronous. A missing
+        tree is an ordinary capability result, not a fatal agent exception:
+        when Shell can see the window, screenshot tools can still operate it.
+        """
+        deadline = time.monotonic() + APP_READY_TIMEOUT
+        running = False
+        root = None
+        while time.monotonic() < deadline:
+            if self.cancel.is_set():
+                raise Cancelled()
+            running = running or bool(self._target_windows(app))
+            try:
+                root = self._app(app)
+                break
+            except ValueError:
+                self.cancel.wait(0.1)
+        if root is None:
+            reason = "accessibility_unavailable" if running else "not_running"
+            return {
+                "app": app,
+                "accessibility_available": False,
+                "reason": reason,
+                "fallback": "desktop_screenshot" if running else "app_launch",
+                "elements": [],
+                "truncated": False,
+            }
         self.elements.clear()
         self.inspected_at = time.monotonic()
         self.inspected_app = app
@@ -109,7 +239,8 @@ class Desktop:
                             queue.append((child, depth + 1))
             except GLib.Error:
                 continue
-        return {"app": app, "elements": items, "truncated": bool(queue)}
+        return {"app": app, "accessibility_available": True,
+                "elements": items, "truncated": bool(queue)}
 
     def _element(self, app, identifier):
         if app != getattr(self, "inspected_app", None) or time.monotonic() - self.inspected_at > 120:
@@ -125,6 +256,7 @@ class Desktop:
         if operation == "inspect":
             return self.inspect(app)
         if operation in ("action", "type"):
+            self._active(app)
             node = self._element(app, a["element"])
             if operation == "action":
                 interface = node.get_action_iface()
@@ -159,14 +291,66 @@ class Desktop:
             self._notify("NotifyPointerAxis", "(oa{sv}dd)", (self.session, {}, 0.0, float(a["dy"])))
         elif operation == "key":
             keys = {"Tab": 0xff09, "Return": 0xff0d, "Escape": 0xff1b, "BackSpace": 0xff08,
+                    "Delete": 0xffff, "Home": 0xff50, "End": 0xff57,
+                    "PageUp": 0xff55, "PageDown": 0xff56,
                     "Left": 0xff51, "Up": 0xff52, "Right": 0xff53, "Down": 0xff54}
-            self._notify("NotifyKeyboardKeysym", "(oa{sv}iu)", (self.session, {}, keys[a["key"]], 1))
-            self._notify("NotifyKeyboardKeysym", "(oa{sv}iu)", (self.session, {}, keys[a["key"]], 0), release=True)
+            self._send_keysym(keys[a["key"]])
+        elif operation == "type_text":
+            for character in a["text"]:
+                if character == "\n":
+                    keysym = 0xff0d
+                elif character == "\t":
+                    keysym = 0xff09
+                else:
+                    keysym = Gdk.unicode_to_keyval(ord(character))
+                if not keysym or (ord(character) < 32 and character not in "\n\t"):
+                    raise ValueError("Text contains a character the desktop portal cannot type")
+                self._send_keysym(keysym)
+        elif operation == "shortcut":
+            self._shortcut(a["key"], a.get("modifiers", []))
         else:
             raise ValueError("Unknown desktop operation")
         if self.cancel.wait(0.25):
             raise Cancelled()
         return self.screenshot(app)
+
+    def _send_keysym(self, keysym):
+        self._notify("NotifyKeyboardKeysym", "(oa{sv}iu)",
+                     (self.session, {}, keysym, 1))
+        self._notify("NotifyKeyboardKeysym", "(oa{sv}iu)",
+                     (self.session, {}, keysym, 0), release=True)
+
+    def _shortcut(self, key, modifiers):
+        modifier_keys = {
+            "Control": 0xffe3, "Alt": 0xffe9, "Shift": 0xffe1, "Super": 0xffeb,
+        }
+        named = {
+            "Tab": 0xff09, "Return": 0xff0d, "Escape": 0xff1b,
+            "BackSpace": 0xff08, "Delete": 0xffff, "Home": 0xff50,
+            "End": 0xff57, "PageUp": 0xff55, "PageDown": 0xff56,
+            "Left": 0xff51, "Up": 0xff52, "Right": 0xff53, "Down": 0xff54,
+        }
+        if key in named:
+            keysym = named[key]
+        elif len(key) == 1 and ord(key) >= 32:
+            keysym = Gdk.unicode_to_keyval(ord(key))
+        else:
+            raise ValueError("Unsupported shortcut key")
+        pressed = []
+        try:
+            for modifier in modifiers:
+                value = modifier_keys[modifier]
+                self._notify("NotifyKeyboardKeysym", "(oa{sv}iu)",
+                             (self.session, {}, value, 1))
+                pressed.append(value)
+            self._notify("NotifyKeyboardKeysym", "(oa{sv}iu)",
+                         (self.session, {}, keysym, 1))
+            self._notify("NotifyKeyboardKeysym", "(oa{sv}iu)",
+                         (self.session, {}, keysym, 0), release=True)
+        finally:
+            for value in reversed(pressed):
+                self._notify("NotifyKeyboardKeysym", "(oa{sv}iu)",
+                             (self.session, {}, value, 0), release=True)
 
     def _notify(self, method, signature, args, release=False):
         if self.cancel.is_set() and not release:
