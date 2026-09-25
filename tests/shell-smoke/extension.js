@@ -683,7 +683,7 @@ export default class SmokeTest extends Extension {
         assert(forge._panelController._behavior.animation_time === 0.2 &&
             forge._panelController._behavior.show_delay === 0.1 &&
             forge._panelController._behavior.hide_delay === 0.2 &&
-            !forge._panelController._behavior.require_pressure &&
+            forge._panelController._behavior.require_pressure &&
             forge._panelController._behavior.intellihide_mode === 'MAXIMIZED_WINDOWS',
             'Top bar did not mirror Dash-to-Dock behavior settings');
         movePointer(monitor.x + monitor.width / 2, monitor.y + monitor.height - 1);
@@ -757,6 +757,90 @@ export default class SmokeTest extends Extension {
             JSON.stringify([overlayWorkArea.x, overlayWorkArea.y,
                 overlayWorkArea.width, overlayWorkArea.height]),
             'Revealing the intelligent top bar resized the application work area');
+
+        // Everything above ran with animations off, which skips the SHOWING and
+        // HIDING states entirely -- the states where a reveal used to consume
+        // itself a moment after arriving.  Turn them on for a two-window pass
+        // over exactly that code.
+        interfaceSettings.set_boolean('enable-animations', true);
+        for (let i = 0; i < 20 && !St.Settings.get().enable_animations; i++)
+            await sleep(50);
+        assert(St.Settings.get().enable_animations,
+            'Could not enable animations for the top-bar regression pass');
+        const revealEdge = () => movePointer(
+            monitor.x + monitor.width / 2, monitor.y + monitor.height - 1);
+
+        launcher.spawnv(['python3',
+            `${GLib.getenv('DF_TEST_ROOT')}/tests/shell-smoke/window.py`, 'second']);
+        let secondWindow;
+        for (let i = 0; i < 40 && !secondWindow; i++) {
+            await sleep(100);
+            secondWindow = global.get_window_actors().map(actor => actor.meta_window)
+                .find(candidate => candidate?.title === 'DF second test');
+        }
+        assert(secondWindow, 'Second intelligent-hide test window did not open');
+        secondWindow.move_resize_frame(false, 80, 120, 400, 300);
+        await sleep(300);
+
+        movePointer(1100, 700);
+        await sleep(1000);
+        assert(Main.layoutManager.panelBox.translation_y === 39,
+            'Animated intelligent top bar did not hide with two windows open');
+        revealEdge();
+        await sleep(700);
+        assert(Main.layoutManager.panelBox.translation_y === 0,
+            'Animated top bar did not reveal on a plain edge hover');
+        // The reported bug: it arrived, then slid away again about a second
+        // later while the pointer had not moved.
+        await sleep(1500);
+        assert(Main.layoutManager.panelBox.translation_y === 0,
+            `Revealed top bar hid itself while the pointer rested on it: held=${
+                forge._panelController._heldOpen}, state=${
+                forge._panelController._panelState}, hidden=${
+                forge._panelController._hidden}`);
+        secondWindow.activate(global.get_current_time());
+        await sleep(700);
+        assert(Main.layoutManager.panelBox.translation_y === 0,
+            'Revealed top bar hid when a background window took focus');
+        movePointer(1100, 700);
+        await sleep(1000);
+        assert(Main.layoutManager.panelBox.translation_y === 39,
+            'Animated top bar did not hide again after the pointer left');
+        assert(forge._panelController._dwellWatch,
+            'Top bar hid without re-arming its reveal trigger');
+        // The other half of the report: after one bad cycle the bar could no
+        // longer be revealed at all.
+        revealEdge();
+        await sleep(700);
+        assert(Main.layoutManager.panelBox.translation_y === 0,
+            'Top bar did not reveal on a second hover cycle');
+        movePointer(1100, 700);
+        await sleep(1000);
+
+        // Overlap decides on geometry, not on focus: a window covering the bar
+        // hides it even while a different application is focused.
+        intelligentWindow.unmaximize(Meta.MaximizeFlags.BOTH);
+        await sleep(300);
+        intelligentWindow.move_resize_frame(false, 620, 100, 320, 300);
+        await sleep(500);
+        assert(Main.layoutManager.panelBox.translation_y === 0,
+            'Intelligent top bar stayed hidden with no window covering it');
+        secondWindow.move_resize_frame(false, 80, 620, 400, 300);
+        intelligentWindow.activate(global.get_current_time());
+        await sleep(700);
+        assert(Main.layoutManager.panelBox.translation_y === 39,
+            `Intelligent top bar ignored a covering window because another app had focus: ${
+                (rect => `${rect.x},${rect.y} ${rect.width}x${rect.height}`)(
+                    secondWindow.get_frame_rect())}`);
+        secondWindow.delete(global.get_current_time());
+        await sleep(700);
+        assert(Main.layoutManager.panelBox.translation_y === 0,
+            'Intelligent top bar stayed hidden after the covering window closed');
+
+        interfaceSettings.set_boolean('enable-animations', false);
+        for (let i = 0; i < 20 && St.Settings.get().enable_animations; i++)
+            await sleep(50);
+
         movePointer(1100, 700);
         await sleep(750);
         intelligentWindow.unmaximize(Meta.MaximizeFlags.BOTH);

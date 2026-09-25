@@ -235,11 +235,14 @@ automatic contrast on to choose a readable black or white foreground, or turn
 it off to pick the foreground yourself.
 
 The top bar can sit at the top or bottom of the primary display, use a custom
-height, stay visible, use the dock's intelligent window-overlap rule, or reveal
-only when the pointer reaches its screen edge. Its pressure/hover trigger,
-animation, delays, fullscreen policy, and intelligent-hide mode follow Dash to
-Dock's live behavior settings. Intelligent and auto-hidden bars overlay
-application content, so revealing one never resizes a maximized window.
+height, stay visible, hide whenever a window covers it, or reveal only when the
+pointer reaches its screen edge. Both hiding modes reveal on a plain hover at
+that edge, and the intelligent mode counts any visible window that really
+overlaps the bar, whichever application has focus. Its animation, show and hide
+delays, and fullscreen policy follow Dash to Dock's live behavior settings; the
+dock's pressure and intellihide-mode settings are deliberately not applied to
+the bar. Intelligent and auto-hidden bars overlay application content, so
+revealing one never resizes a maximized window.
 Desktop Icons NG receives a separate permanent inset for the bar's shown
 footprint, keeping every desktop icon clear when the bar reveals. Dock controls
 use Dash to Dock's own settings

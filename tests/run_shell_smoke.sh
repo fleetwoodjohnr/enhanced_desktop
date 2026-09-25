@@ -25,7 +25,9 @@ gsettings set org.gnome.shell.extensions.dash-to-dock dock-position 'LEFT'
 gsettings set org.gnome.shell.extensions.dash-to-dock animation-time 0.2
 gsettings set org.gnome.shell.extensions.dash-to-dock show-delay 0.1
 gsettings set org.gnome.shell.extensions.dash-to-dock hide-delay 0.2
-gsettings set org.gnome.shell.extensions.dash-to-dock require-pressure-to-show false
+# Left on deliberately: the top bar must reveal on a plain edge hover
+# whether or not the dock demands pressure.
+gsettings set org.gnome.shell.extensions.dash-to-dock require-pressure-to-show true
 gsettings set org.gnome.shell.extensions.dash-to-dock intellihide-mode 'MAXIMIZED_WINDOWS'
 gsettings set org.gnome.shell welcome-dialog-last-shown-version '50.4'
 gsettings set org.gnome.desktop.interface enable-animations false

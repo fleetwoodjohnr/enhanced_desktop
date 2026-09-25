@@ -2,10 +2,8 @@ import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
-import Shell from 'gi://Shell';
 import St from 'gi://St';
 
-import * as Layout from 'resource:///org/gnome/shell/ui/layout.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PointerWatcher from 'resource:///org/gnome/shell/ui/pointerWatcher.js';
 
@@ -18,6 +16,9 @@ import {DesktopIconsIntegration} from './desktopIconsIntegration.js';
 const DOCK_SCHEMA = 'org.gnome.shell.extensions.dash-to-dock';
 const DWELL_CHECK_MS = 100;
 const CORRIDOR_CHECK_MS = 250;
+// A hidden bar still shows one pixel at the screen edge; the extra pixel is
+// slack for the pointer landing a hair inside it.
+const REVEAL_EDGE = 2;
 const PANEL_STATES = Object.freeze({
     HIDDEN: 0,
     SHOWING: 1,
@@ -37,11 +38,9 @@ const APPLICATION_TYPES = new Set([
 ]);
 const IGNORED_APPLICATIONS = new Set(['com.rastersoft.ding', 'com.desktop.ding']);
 
-function supportsExtendedBarriers() {
-    if (global.display.supports_extended_barriers)
-        return global.display.supports_extended_barriers();
-    return !!(Meta.BackendCapabilities?.BARRIERS &&
-        (global.backend.capabilities & Meta.BackendCapabilities.BARRIERS));
+/** Dash to Dock stores its delays in seconds; GLib timeouts want whole ms. */
+function toMs(seconds) {
+    return Math.max(0, Math.round(seconds * 1000));
 }
 
 /** Owns top-bar geometry/visibility and the generated chrome stylesheet. */
@@ -49,7 +48,6 @@ export class PanelController {
     constructor(extensionUuid) {
         this._panelBox = Main.layoutManager.panelBox;
         this._panel = Main.panel;
-        this._tracker = Shell.WindowTracker.get_default();
         this._desktopIcons = new DesktopIconsIntegration(extensionUuid);
         this._chrome = resolveChrome({}, false);
         this._behavior = resolveDockBehavior();
@@ -60,11 +58,8 @@ export class PanelController {
         this._corridorId = 0;
         this._dwellWatch = null;
         this._edgeDwelling = false;
-        this._pressureBarrier = null;
-        this._barrier = null;
         this._hidden = null;
         this._panelState = PANEL_STATES.SHOWN;
-        this._delayedHide = false;
         this._strut = null;
         this._stylesheetLoaded = false;
         this._watchedWindows = new Set();
@@ -140,6 +135,10 @@ export class PanelController {
                 console.warn(`desktop-forge: could not refresh Dash-to-Dock behavior: ${error}`);
             }
         }
+        // Timings and the fullscreen policy follow the dock. Its
+        // require_pressure/pressure_threshold and intellihide_mode do not: the
+        // top bar reveals on a plain edge hover and hides for any window that
+        // really covers it, so those two are resolved but never read.
         this._behavior = resolveDockBehavior(configured);
         if (rebuild)
             this._rebuildRevealTrigger();
@@ -151,8 +150,8 @@ export class PanelController {
         // bar moved to the opposite edge must not stay exposed because the
         // pointer crossed its former position before the config edit.
         this._heldOpen = false;
-        this._delayedHide = false;
         this._cancelHide();
+        this._stopCorridorWatch();
         this._writeStylesheet(chromeStylesheet(this._chrome));
         this._applyGeometry();
         this._updateVisibility(false, true);
@@ -219,51 +218,27 @@ export class PanelController {
             window.showing_on_its_workspace();
     }
 
-    _windowRelevantForMode(window, focusApp, topApp) {
-        const mode = this._behavior.intellihide_mode;
-        if (mode === 'MAXIMIZED_WINDOWS') {
-            return window.maximized_vertically || window.maximized_horizontally || window.fullscreen;
-        }
-        if (mode === 'ALWAYS_ON_TOP') {
-            const focusWindow = global.display.get_focus_window();
-            return !focusApp || !!focusWindow?.fullscreen;
-        }
-        if (mode === 'FOCUS_APPLICATION_WINDOWS' && focusApp) {
-            if (window.get_wm_class() === 'DropDownTerminalWindow')
-                return true;
-            const currentApp = this._tracker.get_window_app(window);
-            const focusWindow = global.display.get_focus_window();
-            const splitPair = focusWindow?.maximized_vertically &&
-                !focusWindow.maximized_horizontally &&
-                window.maximized_vertically && !window.maximized_horizontally &&
-                window.get_monitor() === focusWindow.get_monitor();
-            return currentApp === focusApp || currentApp === topApp || splitPair || window.is_above();
-        }
-        return true;
-    }
-
-    _primaryHasIntellihideOverlap() {
-        const monitor = Main.layoutManager.primaryMonitor;
-        if (!monitor)
-            return false;
-        const actors = global.get_window_actors();
-        const topActor = [...actors].reverse().find(actor =>
-            this._handledWindow(actor.meta_window));
-        const topApp = topActor ? this._tracker.get_window_app(topActor.meta_window) : null;
-        const focusApp = this._tracker.focus_app || topApp;
+    /**
+     * Does any visible window actually cover the bar's strip?
+     *
+     * Deliberately independent of which window has focus: a focus-sensitive
+     * rule makes the bar flap on and off as you click between two windows that
+     * both sit over it. Edges are exclusive, so a window resting flush against
+     * the bar is not an overlap.
+     */
+    _primaryHasOverlap() {
         const target = this._shownPanelBox();
-        return actors.some(actor => {
+        return global.get_window_actors().some(actor => {
             const window = actor.meta_window;
-            if (!this._handledWindow(window) ||
-                !this._windowRelevantForMode(window, focusApp, topApp))
+            if (!this._handledWindow(window))
                 return false;
             const rect = window.get_frame_rect();
-            return rect.x < target.x + target.width && rect.x + rect.width >= target.x &&
-                rect.y < target.y + target.height && rect.y + rect.height >= target.y;
+            return rect.x < target.x + target.width && rect.x + rect.width > target.x &&
+                rect.y < target.y + target.height && rect.y + rect.height > target.y;
         });
     }
 
-    // Retained as a useful smoke-test diagnostic for the default mode.
+    // Retained as a useful smoke-test diagnostic.
     _primaryHasMaximizedWindow() {
         return global.get_window_actors().some(actor => {
             const window = actor.meta_window;
@@ -291,18 +266,27 @@ export class PanelController {
         const top = this._chrome.top_bar;
         const heldOpen = this._heldOpen || this._menuIsOpen();
         const hidden = topBarShouldHide(
-            top.visibility, this._primaryHasIntellihideOverlap(),
+            top.visibility, this._primaryHasOverlap(),
             Main.overview.visible || Main.overview.visibleTarget, heldOpen);
         // Intelligent and auto-hide bars are overlays. Keeping their strut off
         // while they reveal prevents a maximize/visibility feedback loop.
         this._setStrut(top.visibility === 'always');
-        if (!force && hidden === this._hidden)
+        // Where the box actually is counts as much as what we want: a target
+        // that already matches while the box sits at the opposite edge is
+        // exactly how a reveal used to strand itself with no way back.
+        const settled = hidden
+            ? this._panelState === PANEL_STATES.HIDDEN ||
+                this._panelState === PANEL_STATES.HIDING
+            : this._panelState === PANEL_STATES.SHOWN ||
+                this._panelState === PANEL_STATES.SHOWING;
+        if (!force && hidden === this._hidden && settled)
             return;
         this._hidden = hidden;
         if (hidden && animate && this._panelState === PANEL_STATES.SHOWING) {
             // Match Dash to Dock: a reveal is allowed to finish before a hide
-            // can consume it, avoiding the split-second flash at the edge.
-            this._delayedHide = true;
+            // can consume it, avoiding the split-second flash at the edge. The
+            // queued pass decides again once the box has actually arrived.
+            this._queueHide();
             return;
         }
         this._animatePanel(hidden, animate);
@@ -315,8 +299,7 @@ export class PanelController {
         if (!animate || !St.Settings.get().enable_animations) {
             this._panelBox.translation_y = translationY;
             this._panelState = hidden ? PANEL_STATES.HIDDEN : PANEL_STATES.SHOWN;
-            if (hidden)
-                this._rebuildRevealTrigger();
+            this._settleAtEdge(hidden);
             return;
         }
 
@@ -325,21 +308,27 @@ export class PanelController {
             this._removeRevealTrigger();
         this._panelBox.ease({
             translation_y: translationY,
-            duration: this._behavior.animation_time * 1000,
+            duration: toMs(this._behavior.animation_time),
             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
             onComplete: () => {
                 if (this._destroyed)
                     return;
                 this._panelState = hidden ? PANEL_STATES.HIDDEN : PANEL_STATES.SHOWN;
-                if (hidden) {
-                    this._stopCorridorWatch();
-                    this._rebuildRevealTrigger();
-                } else if (this._delayedHide || this._hidden) {
-                    this._delayedHide = false;
-                    this._queueHide();
-                }
+                this._settleAtEdge(hidden);
             },
         });
+    }
+
+    /** Arm whichever watchdog belongs to the edge the box just arrived at. */
+    _settleAtEdge(hidden) {
+        if (hidden) {
+            this._stopCorridorWatch();
+            this._rebuildRevealTrigger();
+            return;
+        }
+        this._removeRevealTrigger();
+        if (this._heldOpen)
+            this._startCorridorWatch();
     }
 
     _setStrut(value) {
@@ -359,11 +348,18 @@ export class PanelController {
 
     _panelHoverChanged() {
         if (this._panelBox.hover) {
-            if (this._panelState !== PANEL_STATES.HIDDEN)
+            // A hidden bar still shows a one-pixel sliver, so this is the
+            // pointer landing on the reveal edge itself: the promptest dwell
+            // signal there is, and it costs no polling.
+            if (this._panelState === PANEL_STATES.HIDDEN)
+                this._armRevealDwell();
+            else
                 this._holdOpen();
-        } else if (this._panelState !== PANEL_STATES.HIDDEN) {
-            this._queueHide();
+            return;
         }
+        this._cancelShowDelay();
+        if (this._panelState !== PANEL_STATES.HIDDEN)
+            this._queueHide();
     }
 
     _queueHide() {
@@ -371,9 +367,14 @@ export class PanelController {
         if (this._chrome.top_bar.visibility === 'always')
             return;
         this._hideId = GLib.timeout_add(GLib.PRIORITY_DEFAULT,
-            this._behavior.hide_delay * 1000, () => {
+            toMs(this._behavior.hide_delay), () => {
                 this._hideId = 0;
-                if (this._menuIsOpen() || this._pointerInCorridor()) {
+                if (this._destroyed)
+                    return GLib.SOURCE_REMOVE;
+                // Only keep waiting while there is something still on screen
+                // to wait for; re-queueing against a hidden bar just spins.
+                if (this._panelState !== PANEL_STATES.HIDDEN &&
+                    (this._menuIsOpen() || this._pointerInCorridor())) {
                     this._queueHide();
                     return GLib.SOURCE_REMOVE;
                 }
@@ -385,21 +386,17 @@ export class PanelController {
 
     _holdOpen() {
         this._cancelHide();
+        this._cancelShowDelay();
         this._heldOpen = true;
-        this._hidden = false;
-        if (this._panelState === PANEL_STATES.HIDDEN ||
-            this._panelState === PANEL_STATES.HIDING)
-            this._animatePanel(false);
+        this._startCorridorWatch();
+        this._updateVisibility();
     }
 
     _triggerReveal() {
         if (!this._revealAllowed())
             return;
         this._removeRevealTrigger();
-        this._heldOpen = true;
-        this._hidden = false;
-        this._startCorridorWatch();
-        this._animatePanel(false);
+        this._holdOpen();
     }
 
     _shownPanelBox() {
@@ -421,10 +418,22 @@ export class PanelController {
             this._shownPanelBox(), pointerX, pointerY);
     }
 
+    /**
+     * The retention watchdog for a revealed bar.
+     *
+     * Hover alone cannot carry this: the hidden bar's sliver is already
+     * hovered before a reveal, so notify::hover never fires as it slides in.
+     */
     _startCorridorWatch() {
-        this._stopCorridorWatch();
+        if (this._corridorId || this._destroyed ||
+            this._chrome.top_bar.visibility === 'always')
+            return;
         this._corridorId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, CORRIDOR_CHECK_MS, () => {
-            if (this._pointerInCorridor() || this._menuIsOpen())
+            if (this._destroyed) {
+                this._corridorId = 0;
+                return GLib.SOURCE_REMOVE;
+            }
+            if (this._pointerInCorridor() || this._menuIsOpen() || this._panelBox.hover)
                 return GLib.SOURCE_CONTINUE;
             this._corridorId = 0;
             this._queueHide();
@@ -449,27 +458,39 @@ export class PanelController {
         const monitor = Main.layoutManager.primaryMonitor;
         if (!monitor)
             return false;
-        const insideX = x > monitor.x && x < monitor.x + monitor.width - 1;
-        return insideX && (this._chrome.top_bar.position === 'bottom'
-            ? y === monitor.y + monitor.height - 1
-            : y === monitor.y);
+        const insideX = x >= monitor.x && x < monitor.x + monitor.width;
+        if (!insideX)
+            return false;
+        return this._chrome.top_bar.position === 'bottom'
+            ? y >= monitor.y + monitor.height - REVEAL_EDGE &&
+                y < monitor.y + monitor.height
+            : y >= monitor.y && y < monitor.y + REVEAL_EDGE;
+    }
+
+    _armRevealDwell() {
+        if (this._showDelayId || this._edgeDwelling || !this._revealAllowed())
+            return;
+        this._edgeDwelling = true;
+        this._showDelayId = GLib.timeout_add(GLib.PRIORITY_DEFAULT,
+            toMs(this._behavior.show_delay), () => {
+                this._showDelayId = 0;
+                this._edgeDwelling = false;
+                if (!this._destroyed && this._pointerOnRevealEdge())
+                    this._triggerReveal();
+                return GLib.SOURCE_REMOVE;
+            });
+    }
+
+    _pointerOnRevealEdge() {
+        return this._panelBox.hover ||
+            this._edgeContains(...global.get_pointer().slice(0, 2));
     }
 
     _checkDwell(x, y) {
-        const atEdge = this._revealAllowed() && this._edgeContains(x, y);
-        if (atEdge && !this._edgeDwelling && !this._showDelayId) {
-            this._edgeDwelling = true;
-            this._showDelayId = GLib.timeout_add(GLib.PRIORITY_DEFAULT,
-                this._behavior.show_delay * 1000, () => {
-                    this._showDelayId = 0;
-                    if (this._edgeContains(...global.get_pointer().slice(0, 2)))
-                        this._triggerReveal();
-                    return GLib.SOURCE_REMOVE;
-                });
-        } else if (!atEdge) {
-            this._edgeDwelling = false;
+        if (this._edgeContains(x, y) || this._panelBox.hover)
+            this._armRevealDwell();
+        else
             this._cancelShowDelay();
-        }
     }
 
     _rebuildRevealTrigger() {
@@ -477,56 +498,24 @@ export class PanelController {
         if (this._destroyed || this._panelState !== PANEL_STATES.HIDDEN ||
             !this._hidden || !this._revealAllowed())
             return;
-        if (this._behavior.require_pressure && supportsExtendedBarriers())
-            this._buildPressureBarrier();
-        else
-            this._dwellWatch = PointerWatcher.getPointerWatcher().addWatch(
-                DWELL_CHECK_MS, (x, y) => this._checkDwell(x, y));
-    }
-
-    _buildPressureBarrier() {
-        const monitor = Main.layoutManager.primaryMonitor;
-        const workArea = Main.layoutManager.getWorkAreaForMonitor(
-            Main.layoutManager.primaryIndex);
-        if (!monitor || !workArea)
-            return;
-        const top = this._chrome.top_bar.position === 'top';
-        const y = top ? monitor.y : monitor.y + monitor.height;
-        this._pressureBarrier = new Layout.PressureBarrier(
-            this._behavior.pressure_threshold,
-            this._behavior.show_delay * 1000,
-            Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW);
-        this._pressureBarrier.connect('trigger', () => this._triggerReveal());
-        this._barrier = new Meta.Barrier({
-            backend: global.backend,
-            x1: workArea.x + 1,
-            x2: workArea.x + workArea.width - 1,
-            y1: y,
-            y2: y,
-            directions: top
-                ? Meta.BarrierDirection.POSITIVE_Y
-                : Meta.BarrierDirection.NEGATIVE_Y,
-        });
-        this._pressureBarrier.addBarrier(this._barrier);
+        // Backstop for the sliver's own hover, which anything drawn over the
+        // screen edge would otherwise swallow.
+        this._dwellWatch = PointerWatcher.getPointerWatcher().addWatch(
+            DWELL_CHECK_MS, (x, y) => this._checkDwell(x, y));
+        // The pointer may already be resting on the edge that just closed.
+        this._checkDwell(...global.get_pointer().slice(0, 2));
     }
 
     _removeRevealTrigger() {
         this._cancelShowDelay();
-        this._edgeDwelling = false;
         if (this._dwellWatch) {
-            PointerWatcher.getPointerWatcher()._removeWatch(this._dwellWatch);
+            this._dwellWatch.remove();
             this._dwellWatch = null;
         }
-        if (this._barrier) {
-            this._pressureBarrier?.removeBarrier(this._barrier);
-            this._barrier.destroy();
-            this._barrier = null;
-        }
-        this._pressureBarrier?.destroy();
-        this._pressureBarrier = null;
     }
 
     _cancelShowDelay() {
+        this._edgeDwelling = false;
         if (this._showDelayId) {
             GLib.source_remove(this._showDelayId);
             this._showDelayId = 0;
@@ -575,6 +564,5 @@ export class PanelController {
             this._theme.unload_stylesheet(this._stylesheetFile);
             this._stylesheetLoaded = false;
         }
-        this._tracker = null;
     }
 }
