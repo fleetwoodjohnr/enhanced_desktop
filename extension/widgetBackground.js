@@ -172,6 +172,16 @@ class WallpaperGlass extends St.Widget {
         }
     }
 
+    /** Change brightness (dark style) or corner radius in place. */
+    setAppearance({dark, corner_radius: cornerRadius} = {}) {
+        if (dark !== undefined)
+            this._blur.brightness = dark ? 0.82 : 1.0;
+        if (cornerRadius !== undefined)
+            this._cornerRadius = Math.max(0, cornerRadius);
+        this._geometryKey = null;
+        this.syncGeometry();
+    }
+
     setBlurEnabled(enabled) {
         this._enabled = !!enabled;
         this.visible = this._enabled;

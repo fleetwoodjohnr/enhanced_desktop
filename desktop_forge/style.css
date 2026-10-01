@@ -61,3 +61,10 @@
     background-color: alpha(currentColor, 0.10);
     font-size: 0.9em;
 }
+
+/* CLIVE's expanded chat while files are dragged over it. */
+.drop-hover {
+    outline: 2px dashed alpha(@accent_color, 0.8);
+    outline-offset: -8px;
+    border-radius: 12px;
+}

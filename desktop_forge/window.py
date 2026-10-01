@@ -12,7 +12,7 @@ from .backend import desktop_entry as de
 # (attribute, module, class, id, title, icon). Imported lazily by _add_page so
 # that one page failing cannot stop the others being built.
 PAGES = [
-    ("overall", "overall", "OverallPage", "overall", "Overall",
+    ("overall", "customize", "CustomizePage", "customize", "Customize",
      "preferences-desktop-appearance-symbolic"),
     ("shortcuts", "shortcuts", "ShortcutsPage", "shortcuts", "Shortcuts",
      "insert-link-symbolic"),

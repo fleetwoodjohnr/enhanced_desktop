@@ -29,6 +29,32 @@ CAST = "org.freedesktop.portal.ScreenCast"
 APP_READY_TIMEOUT = 10
 
 
+def crop_rect(frame, stream_position, stream_size):
+    """The window's rectangle inside the shared stream, or None if it is not on it.
+
+    All in logical pixels: frame is global, the stream is one monitor placed at
+    stream_position. A window hanging off the monitor is cut to the part the
+    stream actually shows.
+    """
+    if not frame or not stream_size:
+        return None
+    sx, sy = stream_position or (0, 0)
+    width, height = stream_size
+    x1 = max(frame[0] - sx, 0)
+    y1 = max(frame[1] - sy, 0)
+    x2 = min(frame[0] - sx + frame[2], width)
+    y2 = min(frame[1] - sy + frame[3], height)
+    if x2 - x1 < 1 or y2 - y1 < 1:
+        return None
+    return (x1, y1, x2 - x1, y2 - y1)
+
+
+def map_point(crop, x, y):
+    """A 0-1000 point in the cropped screenshot, as stream coordinates."""
+    cx, cy, cw, ch = crop
+    return (cx + x * cw / 1000, cy + y * ch / 1000)
+
+
 class Desktop:
     def __init__(self, cancel: threading.Event, shell=None):
         self.cancel = cancel
@@ -40,6 +66,10 @@ class Desktop:
         self.fd = None
         self.stream = None
         self.stream_size = None
+        self.stream_position = None
+        # The part of the stream the last screenshot showed; pointer input is
+        # mapped back through it.
+        self.crop = None
         self.elements = {}
         self.inspected_at = 0
         self.shot = None
@@ -109,6 +139,15 @@ class Desktop:
                 return {"focused": desktop_id}
             self.cancel.wait(0.05)
         raise RuntimeError("The application did not take focus")
+
+    def window_titles(self, desktop_id):
+        """Titles of the app's windows, for App Access's window guards."""
+        return [str(row.get("title", "")) for row in self._target_windows(desktop_id)]
+
+    def _target_frame(self, desktop_id):
+        windows = sorted(self._target_windows(desktop_id), key=lambda row: not row.get("focused"))
+        frame = windows[0].get("frame") if windows else None
+        return frame if isinstance(frame, list) and len(frame) == 4 else None
 
     def _target_windows(self, desktop_id):
         try:
@@ -282,9 +321,9 @@ class Desktop:
             if self.shot != a["screenshot"] or self.shot_app != app or time.monotonic() - self.shot_time > 120:
                 raise ValueError("Take a fresh screenshot before using the pointer")
         if operation == "click":
-            width, height = self.stream_size
+            x, y = map_point(self.crop or (0, 0, *self.stream_size), a["x"], a["y"])
             self._notify("NotifyPointerMotionAbsolute", "(oa{sv}udd)",
-                         (self.session, {}, self.stream, a["x"] * width / 1000, a["y"] * height / 1000))
+                         (self.session, {}, self.stream, x, y))
             self._notify("NotifyPointerButton", "(oa{sv}iu)", (self.session, {}, 272, 1))
             self._notify("NotifyPointerButton", "(oa{sv}iu)", (self.session, {}, 272, 0), release=True)
         elif operation == "scroll":
@@ -413,6 +452,7 @@ class Desktop:
                 raise RuntimeError("Keyboard, pointer, and screen sharing are required")
             self.stream, properties = result["streams"][0]
             self.stream_size = properties.get("logical_size") or properties.get("size")
+            self.stream_position = properties.get("position")
             value, descriptors = self.bus.call_with_unix_fd_list_sync(PORTAL, PORTAL_PATH, CAST,
                 "OpenPipeWireRemote", GLib.Variant("(oa{sv})", (self.session, {})), GLib.VariantType.new("(h)"),
                 Gio.DBusCallFlags.NONE, 10000, None, None)
@@ -437,8 +477,23 @@ class Desktop:
                                                False, 8, info.width, info.height, info.stride[0])
         if not self.stream_size:
             self.stream_size = (info.width, info.height)
-        if info.width > 1280:
-            pixbuf = pixbuf.scale_simple(1280, max(1, round(info.height * 1280 / info.width)), GdkPixbuf.InterpType.BILINEAR)
+        # Only the approved app's window is sent: anything else on the shared
+        # monitor -- another app, one App Access has switched off -- stays out.
+        # An older Shell extension reports no frame; then the whole stream is
+        # all there is to send, as before.
+        frame = self._target_frame(app)
+        self.crop = crop_rect(frame, self.stream_position, self.stream_size) if frame else None
+        if frame and self.crop is None:
+            raise RuntimeError("The app's window is not on the shared screen")
+        if self.crop:
+            scale = info.width / self.stream_size[0]
+            cx, cy, cw, ch = (round(v * scale) for v in self.crop)
+            cw = max(1, min(cw, info.width - cx))
+            ch = max(1, min(ch, info.height - cy))
+            pixbuf = pixbuf.new_subpixbuf(cx, cy, cw, ch).copy()
+        width, height = pixbuf.get_width(), pixbuf.get_height()
+        if width > 1280:
+            pixbuf = pixbuf.scale_simple(1280, max(1, round(height * 1280 / width)), GdkPixbuf.InterpType.BILINEAR)
         ok, png = pixbuf.save_to_bufferv("png", [], [])
         if not ok:
             raise RuntimeError("Screen image could not be encoded")
@@ -471,4 +526,6 @@ class Desktop:
                 self._close_path(self.session, "org.freedesktop.portal.Session")
                 self.session = None
             self.shot = None
+            self.crop = None
+            self.stream_position = None
             self.elements.clear()

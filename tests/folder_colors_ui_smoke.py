@@ -73,9 +73,13 @@ def activate(application):
         results['native_metadata'] = 'apply, independent colors, restart, reset and prior-icon restoration passed'
         window = DesktopForgeWindow(application=application)
         window.set_title('Desktop Forge folder colors test')
-        page = window._pages['overall']
-        assert isinstance(page, OverallPage), 'Overall page failed to load'
-        assert window._stack.get_visible_child() is page, 'Overall is not the first tab'
+        hub = window._pages['overall']
+        assert window._stack.get_visible_child() is hub, 'Customize is not the first tab'
+        # The Overall controls now live in Customize's sections.
+        page = hub.overall
+        assert isinstance(page, OverallPage), 'Overall controls failed to load'
+        assert page._top_group.get_parent() is not None, 'Top-bar controls were not moved into Customize'
+        hub.show_section('desktop')
         assert page._top_group.get_title() == 'Top Bar', 'Top-bar controls are missing'
         assert page._dock_group.get_title() == 'Dock', 'Dock controls are missing'
         assert page._icons_group.get_title() == 'Desktop Icons', 'Desktop icon controls are missing'

@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Keyboard shortcuts for Desktop Forge. Everything else the extension
+     reads comes from ~/.config/desktop-forge; Shell's keybinding API only
+     takes GSettings keys, so these live here. All start unassigned. -->
+<schemalist gettext-domain="desktop-forge">
+  <schema id="org.gnome.shell.extensions.desktop-forge" path="/org/gnome/shell/extensions/desktop-forge/">
+    <key name="toggle-tiling" type="as">
+      <default>[]</default>
+      <summary>Turn tiling on or off</summary>
+    </key>
+    <key name="next-layout" type="as">
+      <default>[]</default>
+      <summary>Next tiling layout</summary>
+    </key>
+    <key name="toggle-floating" type="as">
+      <default>[]</default>
+      <summary>Float or tile the focused window</summary>
+    </key>
+    <key name="focus-left" type="as">
+      <default>[]</default>
+      <summary>Focus the window to the left</summary>
+    </key>
+    <key name="focus-right" type="as">
+      <default>[]</default>
+      <summary>Focus the window to the right</summary>
+    </key>
+    <key name="focus-up" type="as">
+      <default>[]</default>
+      <summary>Focus the window above</summary>
+    </key>
+    <key name="focus-down" type="as">
+      <default>[]</default>
+      <summary>Focus the window below</summary>
+    </key>
+    <key name="swap-left" type="as">
+      <default>[]</default>
+      <summary>Swap with the window to the left</summary>
+    </key>
+    <key name="swap-right" type="as">
+      <default>[]</default>
+      <summary>Swap with the window to the right</summary>
+    </key>
+    <key name="swap-up" type="as">
+      <default>[]</default>
+      <summary>Swap with the window above</summary>
+    </key>
+    <key name="swap-down" type="as">
+      <default>[]</default>
+      <summary>Swap with the window below</summary>
+    </key>
+    <key name="grow-main" type="as">
+      <default>[]</default>
+      <summary>Make the main area larger</summary>
+    </key>
+    <key name="shrink-main" type="as">
+      <default>[]</default>
+      <summary>Make the main area smaller</summary>
+    </key>
+    <key name="snap-left" type="as">
+      <default>[]</default>
+      <summary>Snap to the left half</summary>
+    </key>
+    <key name="snap-right" type="as">
+      <default>[]</default>
+      <summary>Snap to the right half</summary>
+    </key>
+    <key name="snap-top-left" type="as">
+      <default>[]</default>
+      <summary>Snap to the top-left quarter</summary>
+    </key>
+    <key name="snap-top-right" type="as">
+      <default>[]</default>
+      <summary>Snap to the top-right quarter</summary>
+    </key>
+    <key name="snap-bottom-left" type="as">
+      <default>[]</default>
+      <summary>Snap to the bottom-left quarter</summary>
+    </key>
+    <key name="snap-bottom-right" type="as">
+      <default>[]</default>
+      <summary>Snap to the bottom-right quarter</summary>
+    </key>
+    <key name="center-window" type="as">
+      <default>[]</default>
+      <summary>Center the focused window</summary>
+    </key>
+    <key name="toggle-top-bar" type="as">
+      <default>[]</default>
+      <summary>Show or hide the top bar</summary>
+    </key>
+    <key name="open-clive" type="as">
+      <default>[]</default>
+      <summary>Open CLIVE</summary>
+    </key>
+    <key name="scratchpad-toggle" type="as">
+      <default>[]</default>
+      <summary>Show or hide the scratchpad</summary>
+    </key>
+    <key name="scratchpad-send" type="as">
+      <default>[]</default>
+      <summary>Move the focused window to or from the scratchpad</summary>
+    </key>
+  </schema>
+</schemalist>

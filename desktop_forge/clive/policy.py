@@ -6,6 +6,10 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 
+# Arguments that name a file or folder, which the approved task must cover.
+PATH_KEYS = ("path", "source", "destination", "directory", "repo", "cwd")
+
+
 class ScopeChanged(Exception):
     """The next action needs a new, visible task approval."""
 
@@ -45,7 +49,7 @@ def check_scope(name: str, arguments: dict, plan: dict):
     permissions = plan["permissions"]
     if name not in permissions["tools"]:
         raise ScopeChanged(f"Add permission for {name}")
-    for key in ("path", "source", "destination", "directory"):
+    for key in PATH_KEYS:
         if key not in arguments:
             continue
         path = local_path(arguments[key])
@@ -136,7 +140,10 @@ def plan_schema(names: list[str]) -> dict:
             "steps": strings,
             "permissions": {"type": "object", "additionalProperties": False,
                 "required": ["tools", "folders", "apps", "web"], "properties": {
-                    "tools": {"type": "array", "items": {"type": "string", "enum": names}, "uniqueItems": True},
+                    # With nothing switched on there is nothing to name; an
+                    # empty enum is not a valid schema in every draft.
+                    "tools": ({"type": "array", "items": {"type": "string", "enum": names},
+                               "uniqueItems": True} if names else {"type": "array", "maxItems": 0}),
                     "folders": strings, "apps": strings, "web": {"type": "boolean"}}}}}
 
 

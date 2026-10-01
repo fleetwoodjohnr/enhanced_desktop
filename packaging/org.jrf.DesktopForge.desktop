@@ -9,8 +9,12 @@ Terminal=false
 Categories=Utility;GTK;
 Keywords=shortcut;launcher;desktop;widget;weather;stocks;calendar;reminder;todo;task;news;rss;feed;
 StartupNotify=true
-Actions=clive;
+Actions=clive;clive-settings;
 
 [Desktop Action clive]
 Name=Open CLIVE
 Exec=desktop-forge --clive
+
+[Desktop Action clive-settings]
+Name=CLIVE Settings
+Exec=desktop-forge --clive-settings=models

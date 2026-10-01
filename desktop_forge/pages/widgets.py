@@ -27,6 +27,11 @@ SAVE_DELAY_MS = 500
 # provider and widget agree on.
 FORECAST_MODES = ["hourly", "daily", "both"]
 MONITOR_LABELS = ["Primary", "Second", "Third", "Fourth"]
+SYSTEM_SENSOR_SETS = ("main", "all")
+TEMPERATURE_UNITS = ("celsius", "fahrenheit")
+# Default System card height and what each optional section adds to it.
+SYSTEM_BASE_HEIGHT = 190
+SYSTEM_SECTION_HEIGHTS = {"show_thermals": 70, "show_network": 62}
 
 
 class WidgetsPage(Adw.PreferencesPage):
@@ -48,12 +53,21 @@ class WidgetsPage(Adw.PreferencesPage):
         self._widgets_group.set_header_suffix(self._build_header_buttons())
         self.add(self._widgets_group)
 
+        self._layouts_group = Adw.PreferencesGroup(
+            title="Layouts",
+            description="Save where your widgets are and which are shown, then switch between "
+                        "arrangements -- one for work, one for the evening.",
+        )
+        self._layout_rows: list[Gtk.Widget] = []
+        self.add(self._layouts_group)
+
         self._appearance_group = Adw.PreferencesGroup(title="Appearance")
         self.add(self._appearance_group)
 
         self._build_appearance()
         self.refresh_status()
         self._rebuild_widget_list()
+        self._rebuild_layouts()
 
     # -- setup / status ----------------------------------------------------
 
@@ -558,7 +572,64 @@ class WidgetsPage(Adw.PreferencesPage):
         options = self._config.provider_options("system")
         row = Adw.EntryRow(title="Disk to monitor", text=options.get("disk_path", "/"))
         row.connect("changed", self._on_disk_path)
-        return [row]
+
+        thermals = Adw.SwitchRow(
+            title="Show temperatures",
+            subtitle="CPU, graphics and drive temperatures, colored when they run hot",
+            active=widget.options.get("show_thermals", False),
+        )
+        sensors = Adw.ComboRow(
+            title="Temperature sensors",
+            model=Gtk.StringList.new(["CPU, graphics and drive", "Every sensor"]),
+        )
+        sensors.set_selected(1 if widget.options.get("thermal_sensors") == "all" else 0)
+        sensors.connect("notify::selected", self._on_widget_choice, widget,
+                        "thermal_sensors", SYSTEM_SENSOR_SETS)
+        unit = Adw.ComboRow(
+            title="Temperature unit", model=Gtk.StringList.new(["Celsius", "Fahrenheit"]),
+        )
+        unit.set_selected(1 if widget.options.get("temperature_unit") == "fahrenheit" else 0)
+        unit.connect("notify::selected", self._on_widget_choice, widget,
+                     "temperature_unit", TEMPERATURE_UNITS)
+
+        network = Adw.SwitchRow(
+            title="Show network details",
+            subtitle="Connection name, Wi-Fi signal, VPN and live download and upload rates",
+            active=widget.options.get("show_network", False),
+        )
+        address = Adw.SwitchRow(
+            title="Show IP address",
+            active=widget.options.get("show_ip", True),
+        )
+        address.connect("notify::active", self._on_widget_option, widget, "show_ip")
+
+        def sync_sensitivity(*_args):
+            sensors.set_sensitive(thermals.get_active())
+            unit.set_sensitive(thermals.get_active())
+            address.set_sensitive(network.get_active())
+
+        thermals.connect("notify::active", self._on_system_section, widget, "show_thermals")
+        network.connect("notify::active", self._on_system_section, widget, "show_network")
+        thermals.connect("notify::active", sync_sensitivity)
+        network.connect("notify::active", sync_sensitivity)
+        sync_sensitivity()
+        return [row, thermals, sensors, unit, network, address]
+
+    def _on_widget_choice(self, row, _pspec, widget: config.Widget, key: str,
+                          values: tuple[str, ...]) -> None:
+        widget.options[key] = values[row.get_selected()]
+        self._schedule_save()
+
+    def _on_system_section(self, row, _pspec, widget: config.Widget, key: str) -> None:
+        widget.options[key] = row.get_active()
+        # Grow a card that would otherwise clip the section just switched on;
+        # never shrink one the user sized deliberately.
+        needed = SYSTEM_BASE_HEIGHT + sum(
+            extra for option, extra in SYSTEM_SECTION_HEIGHTS.items()
+            if widget.options.get(option))
+        if widget.height < needed:
+            widget.height = needed
+        self._schedule_save()
 
     def _on_disk_path(self, row) -> None:
         self._config.providers.setdefault("system", {})["disk_path"] = row.get_text().strip() or "/"
@@ -757,6 +828,61 @@ class WidgetsPage(Adw.PreferencesPage):
             self._save_source = 0
         return True
 
+    # -- saved layouts --------------------------------------------------------
+
+    def _rebuild_layouts(self) -> None:
+        for row in self._layout_rows:
+            self._layouts_group.remove(row)
+        entry = Adw.EntryRow(title="Save current layout as…", show_apply_button=True)
+        entry.connect("apply", self._on_save_layout)
+        self._layout_rows = [entry]
+        for name, entries in self._config.layouts.items():
+            shown = sum(1 for e in entries if e.get("enabled", True))
+            row = Adw.ActionRow(title=markup(name), subtitle=f"{shown} widget{'s' if shown != 1 else ''} shown")
+            use = Gtk.Button(label="Use", valign=Gtk.Align.CENTER, tooltip_text=f"Arrange the widgets as “{name}”")
+            use.connect("clicked", lambda _b, n=name: self._on_use_layout(n))
+            delete = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER,
+                                tooltip_text=f"Delete “{name}”")
+            delete.add_css_class("flat")
+            delete.connect("clicked", lambda _b, n=name: self._on_delete_layout(n))
+            row.add_suffix(use)
+            row.add_suffix(delete)
+            self._layout_rows.append(row)
+        for row in self._layout_rows:
+            self._layouts_group.add(row)
+
+    def _fresh(self) -> config.Config:
+        """The config as on disk, after this page's pending edits, with the
+        positions the extension has written since the page loaded."""
+        if self._save_source:
+            self._flush_save()
+        return config.load()
+
+    def _on_save_layout(self, entry: Adw.EntryRow) -> None:
+        name = entry.get_text().strip()
+        fresh = self._fresh()
+        try:
+            config.save_layout(fresh, name)
+        except ValueError as exc:
+            self._toast(str(exc))
+            return
+        if self._save_now(fresh):
+            entry.set_text("")
+            self._rebuild_layouts()
+            self._toast(f"Saved the layout “{name}”")
+
+    def _on_use_layout(self, name: str) -> None:
+        fresh = self._fresh()
+        if config.apply_layout(fresh, name) and self._save_now(fresh):
+            self._rebuild_widget_list()
+            self._toast(f"Widgets arranged as “{name}”")
+
+    def _on_delete_layout(self, name: str) -> None:
+        fresh = self._fresh()
+        config.delete_layout(fresh, name)
+        if self._save_now(fresh):
+            self._rebuild_layouts()
+
     def _toast(self, message: str) -> None:
         self._toasts.add_toast(Adw.Toast(title=markup(message)))
 
@@ -764,6 +890,7 @@ class WidgetsPage(Adw.PreferencesPage):
         """Pick up positions the extension wrote while the app was open."""
         self._config = config.load()
         self._rebuild_widget_list()
+        self._rebuild_layouts()
         self.refresh_status()
 
 

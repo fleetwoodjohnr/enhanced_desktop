@@ -31,6 +31,16 @@
     font-size: 0.78em;
     font-weight: bold;
 }
+/* The CLIVE card's model switcher: the model name as a quiet pill. */
+.df-clive-model {
+    border-radius: 76.85em;
+    padding: 0.15em 0.55em;
+    background-color: transparent;
+}
+.df-clive-model:hover, .df-clive-model:focus { background-color: rgba(127,127,127,0.16); }
+.df-clive-model:active { background-color: rgba(127,127,127,0.26); }
+.df-clive-model-box { spacing: 0.3em; }
+.df-clive-model-icon { icon-size: 0.9em; }
 
 .df-clock-time {
     font-size: 3.15em;
@@ -115,6 +125,26 @@
 .df-meter-value { font-size: 0.82em; font-weight: bold; }
 
 .df-meter-track   { height: 8px; border-radius: 4px; background-color: rgba(255,255,255,0.14); }
+
+/* System card: optional temperature and network sections, styled like the
+   meters above them so the card reads as one list. */
+.df-system-section {
+    spacing: 4px;
+    padding: 7px 10px;
+    border-radius: 12px;
+    background-color: rgba(255,255,255,0.055);
+    border-width: 1px;
+    border-color: transparent;
+}
+.df-temp-row { spacing: 12px; }
+.df-temp-chip { spacing: 6px; }
+.df-temp-value { font-size: 0.82em; font-weight: bold; }
+.df-system-network { spacing: 6px; }
+.df-system-network-icon { icon-size: 1.1em; }
+.df-theme-dark .df-temp-warm { color: #ffb340; }
+.df-theme-dark .df-temp-hot { color: #ff6961; }
+.df-theme-light .df-temp-warm { color: #b25000; }
+.df-theme-light .df-temp-hot { color: #c9001b; }
 .df-meter-fill    { height: 8px; border-radius: 4px; }
 
 .df-error         { font-size: 0.80em; color: #ffbe6f; padding-top: 4px; }
@@ -218,8 +248,8 @@
 .df-chip:checked  { background-color: rgba(53,132,228,0.85); color: #ffffff; }
 
 .df-entry {
-    border-radius: 8px;
-    padding: 8px 10px;
+    border-radius: 0.62em;
+    padding: 0.62em 0.77em;
     background-color: rgba(255,255,255,0.10);
     color: #ffffff;
     caret-color: #ffffff;
@@ -369,6 +399,7 @@
 .df-theme-light .df-row,
 .df-theme-light .df-todo-row,
 .df-theme-light .df-meter-group,
+.df-theme-light .df-system-section,
 .df-theme-light .df-news-item,
 .df-theme-light .df-forecast-day {
     background-color: rgba(255,255,255,0.32);
@@ -380,6 +411,7 @@
 .df-theme-dark .df-row,
 .df-theme-dark .df-todo-row,
 .df-theme-dark .df-meter-group,
+.df-theme-dark .df-system-section,
 .df-theme-dark .df-news-item,
 .df-theme-dark .df-forecast-day {
     background-color: rgba(255,255,255,0.055);
@@ -469,37 +501,37 @@
    the user's own bubble, Approve, the approval card's border -- are set
    inline from the widget's accent rather than hardcoded here. */
 
-.df-clive-transcript { spacing: 8px; padding: 6px 2px; }
+.df-clive-transcript { spacing: 0.62em; padding: 0.46em 0.15em; }
 .df-clive-mode { font-size: 0.80em; opacity: 0.7; }
 .df-clive-speaker { font-size: 0.76em; font-weight: bold; letter-spacing: 0.3px; }
 .df-clive-message { font-size: 0.92em; }
-.df-clive-welcome { padding: 4px 2px; opacity: 0.85; }
-.df-clive-actions { spacing: 6px; padding-top: 6px; }
+.df-clive-welcome { padding: 0.31em 0.15em; opacity: 0.85; }
+.df-clive-actions { spacing: 0.46em; padding-top: 0.46em; }
 
 /* Speaker bubbles. The gutter has no content, only a floor on its width, so
    a long turn still leaves the opposite margin visible. */
-.df-clive-gutter { min-width: 40px; }
+.df-clive-gutter { min-width: 3.08em; }
 .df-clive-bubble {
     font-size: 0.92em;
-    padding: 6px 9px;
-    border-radius: 12px;
+    padding: 0.46em 0.69em;
+    border-radius: 0.92em;
     background-color: rgba(255,255,255,0.07);
     border-width: 1px;
     border-color: transparent;
 }
 
 .df-clive-preview {
-    spacing: 4px;
-    padding: 8px 10px;
-    border-radius: 12px;
+    spacing: 0.31em;
+    padding: 0.62em 0.77em;
+    border-radius: 0.92em;
     border-width: 1px;
     border-color: rgba(255,255,255,0.28);
     background-color: rgba(255,255,255,0.06);
 }
 
 .df-clive-button {
-    border-radius: 10px;
-    padding: 6px 10px;
+    border-radius: 0.77em;
+    padding: 0.46em 0.77em;
     font-size: 0.92em;
     background-color: rgba(255,255,255,0.10);
     border-width: 1px;
@@ -511,12 +543,12 @@
 
 /* Staged files reuse the preview box, so the two read as the same kind of
    aside on the conversation. The remove button follows .df-tick above. */
-.df-clive-attached { spacing: 4px; }
-.df-clive-attachment-rows { spacing: 2px; }
-.df-clive-attachment { spacing: 6px; }
+.df-clive-attached { spacing: 0.31em; }
+.df-clive-attachment-rows { spacing: 0.15em; }
+.df-clive-attachment { spacing: 0.46em; }
 .df-clive-chip-remove {
-    border-radius: 99px;
-    padding: 2px;
+    border-radius: 7.62em;
+    padding: 0.15em;
     color: rgba(255,255,255,0.72);
 }
 .df-clive-chip-remove:hover,
@@ -528,7 +560,7 @@
 
 /* The transcript is the point of the card: keep a readable slice of it even
    when the card is resized well below its natural height. */
-.df-clive-scroll { min-height: 56px; }
+.df-clive-scroll { min-height: 4.31em; }
 
 /* The card holds the desktop keyboard while this is set. The cue goes on the
    entry rather than the card border, which belongs to the glass surface.
@@ -576,3 +608,41 @@
    outline of its own in either theme. */
 .df-theme-light .df-clive-bubble-mine,
 .df-theme-dark .df-clive-bubble-mine { border-color: transparent; }
+
+/* CLIVE's confirmation card: amber, because it is the one stop no approval
+   mode skips. */
+.df-clive-confirmation { border-color: rgba(255,179,64,0.65); }
+.df-clive-warning { color: #ffb340; }
+.df-theme-light .df-clive-warning { color: #9a4d00; }
+.df-clive-confirm-title { font-weight: bold; }
+.df-clive-confirm-detail { font-size: 0.86em; }
+
+/* Compact CLIVE card (Settings → Appearance): more conversation per card. */
+.df-clive-compact .df-clive-transcript { spacing: 0.3em; }
+.df-clive-compact .df-clive-message { font-size: 0.92em; }
+.df-clive-compact .df-clive-bubble { padding: 0.25em 0.5em; }
+.df-clive-compact .df-clive-actions { spacing: 0.3em; }
+
+/* CLIVE's staged files, above the composer, and the files on sent messages. */
+.df-clive-attachment { spacing: 0.4em; }
+.df-clive-attachment-icon { icon-size: 1em; }
+.df-clive-drop-hint { font-style: italic; padding: 0.2em 0.4em; }
+.df-clive-message-files { padding: 0 0.6em; }
+.df-clive-files-mine { text-align: right; }
+
+/* CLIVE card: icons follow the card's text scale. */
+.df-clive-icon { icon-size: 0.95em; }
+.df-clive-links { spacing: 0.3em; padding: 0 0.6em; }
+.df-clive-link { font-size: 0.86em; padding: 0.1em 0.45em; border-radius: 0.6em;
+    background-color: rgba(127,127,127,0.14); }
+.df-clive-link:hover, .df-clive-link:focus { background-color: rgba(127,127,127,0.26); }
+.df-clive-action { padding: 0 0.6em; opacity: 0.8; }
+.df-clive-action-blocked, .df-clive-action-declined { color: #ffb340; opacity: 1; }
+.df-theme-light .df-clive-action-blocked, .df-theme-light .df-clive-action-declined { color: #9a4d00; }
+
+/* Where a dragged window will snap to. */
+.df-snap-preview {
+    background-color: rgba(53, 132, 228, 0.22);
+    border: 2px solid rgba(53, 132, 228, 0.75);
+    border-radius: 12px;
+}

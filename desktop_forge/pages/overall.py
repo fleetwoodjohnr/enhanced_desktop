@@ -21,6 +21,20 @@ from ..backend.shell_chrome import DashToDock
 
 SAVE_DELAY_MS = 400
 VISIBILITY_VALUES = ["always", "intelligent", "auto"]
+HIDE_WHEN_VALUES = list(config.TOP_BAR_HIDE_WHEN)
+REVEAL_METHOD_VALUES = list(config.TOP_BAR_REVEAL_METHODS)
+SENSITIVITY_VALUES = list(config.TOP_BAR_SENSITIVITIES)
+# (key, title, subtitle, maximum, step) for the timed top-bar settings.
+TOP_BAR_TIMING_ROWS = (
+    ("reveal_delay", "Reveal delay", "Seconds at the edge before the bar appears", 2.0, 0.05),
+    ("hide_delay", "Hide delay", "Seconds after the pointer leaves before it hides", 5.0, 0.1),
+    ("animation_time", "Animation", "Seconds the slide takes; 0 appears instantly", 1.0, 0.05),
+)
+TOP_VISIBILITY_SUBTITLES = {
+    "always": "The bar is always on screen and windows fit below it",
+    "intelligent": "Hides while a window covers it; reveal it at the screen edge",
+    "auto": "Stays hidden until the pointer reaches the screen edge",
+}
 TOP_POSITION_VALUES = ["top", "bottom"]
 DOCK_POSITION_VALUES = ["TOP", "RIGHT", "BOTTOM", "LEFT"]
 ICON_MATERIAL_VALUES = ["system", "solid", "frosted", "liquid"]
@@ -155,6 +169,9 @@ class OverallPage(Adw.PreferencesPage):
         self._syncing_chrome = False
         self._colour_controls = {}
         self._auto_rows = {}
+        # The widget dialogs are parented to. The Customize hub moves this
+        # page's groups into its own sections and sets itself here.
+        self.host: Gtk.Widget = self
 
         self._top_group = Adw.PreferencesGroup(
             title="Top Bar",
@@ -201,8 +218,7 @@ class OverallPage(Adw.PreferencesPage):
         options = self._config.chrome_options("top_bar")
         self._top_visibility = Adw.ComboRow(
             title="Visibility",
-            subtitle="Intelligent hide follows Dash to Dock's window rule and reveal behavior",
-            model=Gtk.StringList.new(["Always Visible", "Intelligent Hide", "Auto-hide"]),
+            model=Gtk.StringList.new(["Always Visible", "Intelligent Auto-hide", "Always Hidden"]),
         )
         self._top_visibility.set_selected(self._index(
             VISIBILITY_VALUES, options.get("visibility"), 0
@@ -228,7 +244,67 @@ class OverallPage(Adw.PreferencesPage):
                                  "top_bar", "height", int)
         self._top_group.add(self._top_height)
 
+        # Everything that only matters while the bar hides lives in one
+        # expander, dimmed in always-visible mode rather than hidden, so the
+        # options stay discoverable.
+        self._top_hiding = Adw.ExpanderRow(
+            title="Hiding Behavior",
+            subtitle="When the bar hides and how it comes back",
+        )
+        self._top_group.add(self._top_hiding)
+        self._top_hide_when = self._top_combo(
+            "Hide when", "Only used by intelligent auto-hide",
+            ["Any window touches the bar", "The focused app's window touches it",
+             "A maximized or tiled window touches it"],
+            HIDE_WHEN_VALUES, options, "hide_when")
+        self._top_reveal_method = self._top_combo(
+            "Reveal by", "Pushing never blocks clicks at the very edge of maximized apps",
+            ["Hovering at the screen edge", "Pushing against the screen edge"],
+            REVEAL_METHOD_VALUES, options, "reveal_method")
+        self._top_sensitivity = self._top_combo(
+            "Edge sensitivity", "Higher reacts closer to the edge and to a lighter push",
+            ["Low", "Medium", "High"], SENSITIVITY_VALUES, options, "sensitivity")
+        self._top_timings = {}
+        for key, title, subtitle, maximum, step in TOP_BAR_TIMING_ROWS:
+            row = Adw.SpinRow.new_with_range(0, maximum, step)
+            row.set_digits(2)
+            row.set_title(title)
+            row.set_subtitle(subtitle)
+            row.set_value(options[key])
+            row.connect("notify::value", self._on_chrome_number, "top_bar", key, float)
+            self._top_hiding.add_row(row)
+            self._top_timings[key] = row
+        self._top_fullscreen = Adw.SwitchRow(
+            title="Reveal over fullscreen apps",
+            subtitle="Off keeps videos and games free of the bar",
+            active=options["reveal_in_fullscreen"],
+        )
+        self._top_fullscreen.connect("notify::active", self._on_top_fullscreen)
+        self._top_hiding.add_row(self._top_fullscreen)
+        self._sync_top_hiding(options.get("visibility"))
+
         self._add_appearance(self._top_group, "top_bar")
+
+    def _top_combo(self, title, subtitle, labels, values, options, key) -> Adw.ComboRow:
+        row = Adw.ComboRow(title=title, subtitle=subtitle, model=Gtk.StringList.new(labels))
+        row.set_selected(self._index(values, options.get(key), 0))
+        row.connect("notify::selected", self._on_top_choice, key, values)
+        self._top_hiding.add_row(row)
+        return row
+
+    def _on_top_choice(self, row, _pspec, key: str, values: list[str]) -> None:
+        if not self._syncing_chrome:
+            self._queue_chrome("top_bar", key, values[row.get_selected()])
+
+    def _on_top_fullscreen(self, row, _pspec) -> None:
+        if not self._syncing_chrome:
+            self._queue_chrome("top_bar", "reveal_in_fullscreen", row.get_active())
+
+    def _sync_top_hiding(self, visibility) -> None:
+        self._top_visibility.set_subtitle(TOP_VISIBILITY_SUBTITLES.get(
+            visibility, TOP_VISIBILITY_SUBTITLES["always"]))
+        self._top_hiding.set_sensitive(visibility != "always")
+        self._top_hide_when.set_sensitive(visibility == "intelligent")
 
     def _build_dock(self) -> None:
         self._dock_warning = Adw.ActionRow(
@@ -487,9 +563,10 @@ class OverallPage(Adw.PreferencesPage):
         return config.CHROME_PALETTES[palette][surface][key]
 
     def _on_top_visibility(self, row, _pspec) -> None:
+        value = VISIBILITY_VALUES[row.get_selected()]
+        self._sync_top_hiding(value)
         if not self._syncing_chrome:
-            self._queue_chrome("top_bar", "visibility",
-                               VISIBILITY_VALUES[row.get_selected()])
+            self._queue_chrome("top_bar", "visibility", value)
 
     def _on_top_position(self, row, _pspec) -> None:
         if self._syncing_chrome:
@@ -792,6 +869,11 @@ class OverallPage(Adw.PreferencesPage):
         self._reload_icon_controls()
         self._reload_folders()
 
+    def reload_chrome(self) -> None:
+        """Show top bar and dock values changed elsewhere (a profile switch)."""
+        self._config = config.load()
+        self._reload_chrome_controls()
+
     def _reload_chrome_controls(self) -> None:
         options = self._config.chrome_options("top_bar")
         self._syncing_chrome = True
@@ -802,6 +884,14 @@ class OverallPage(Adw.PreferencesPage):
             TOP_POSITION_VALUES, options.get("position"), 0
         ))
         self._top_height.set_value(max(24, min(64, options.get("height", 32))))
+        for row, values, key in ((self._top_hide_when, HIDE_WHEN_VALUES, "hide_when"),
+                                 (self._top_reveal_method, REVEAL_METHOD_VALUES, "reveal_method"),
+                                 (self._top_sensitivity, SENSITIVITY_VALUES, "sensitivity")):
+            row.set_selected(self._index(values, options.get(key), 0))
+        for key, row in self._top_timings.items():
+            row.set_value(options[key])
+        self._top_fullscreen.set_active(options["reveal_in_fullscreen"])
+        self._sync_top_hiding(options.get("visibility"))
         for surface in ("top_bar", "dock"):
             if (surface, "background") not in self._colour_controls:
                 continue
@@ -941,19 +1031,19 @@ class OverallPage(Adw.PreferencesPage):
             except (ValueError, OSError) as exc:
                 self._toast(str(exc))
 
-        picker.select_folder(self.get_root(), None, selected)
+        picker.select_folder(self.host.get_root(), None, selected)
 
     def _edit(self, folder: Gio.File, color: str) -> None:
         dialog = FolderColorDialog(folder, color, lambda value, editor: self._operate(
             lambda: self._store.apply(folder.get_uri(), value), "Folder color applied", editor))
-        dialog.present(self)
+        dialog.present(self.host)
 
     def _operate(self, operation, message: str, dialog: FolderColorDialog | None = None) -> None:
         if self._busy:
             return
         self._busy = True
         self._group.set_sensitive(False)
-        root = self.get_root()
+        root = self.host.get_root()
         application = root.get_application() if isinstance(root, Gtk.ApplicationWindow) else None
         if application:
             application.hold()

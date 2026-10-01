@@ -135,12 +135,110 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(clive_settings.DEFAULTS["context_files"], [])
 
 
+class ModelSwitchTests(unittest.TestCase):
+    """Switching between the cloud and local model, from any switcher."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path = Path(self.tmp.name) / "clive.json"
+        self.enterContext(patch.object(clive_settings, "SETTINGS_PATH", self.path))
+
+    def confirm_cloud(self):
+        clive_settings.save_settings({"free_account_confirmed": True})
+
+    def test_the_active_model_is_always_offered(self):
+        self.path.write_text(json.dumps({"cloud_model": "gemma4:31b",
+                                         "cloud_models": ["gpt-oss:120b", "not valid"]}))
+        loaded = clive_settings.load_settings()
+        self.assertEqual(loaded["cloud_models"], ["gemma4:31b", "gpt-oss:120b"])
+        self.assertEqual(loaded["local_models"], ["qwen3.5:4b"])
+
+    def test_switching_to_local_needs_nothing(self):
+        result = clive_settings.select_model("local", "llama3.2:3b", has_key=False)
+        self.assertFalse(result["cloud_enabled"])
+        self.assertEqual(result["local_model"], "llama3.2:3b")
+        self.assertIn("llama3.2:3b", result["local_models"])
+        self.assertIn("qwen3.5:4b", result["local_models"], "switching must not forget the old model")
+
+    def test_the_cloud_needs_confirmation_and_a_key(self):
+        with self.assertRaisesRegex(ValueError, "billing"):
+            clive_settings.select_model("cloud", has_key=True)
+        self.confirm_cloud()
+        with self.assertRaisesRegex(ValueError, "API key"):
+            clive_settings.select_model("cloud", has_key=False)
+        result = clive_settings.select_model("cloud", "gpt-oss:120b", has_key=True)
+        self.assertTrue(result["cloud_enabled"])
+        self.assertEqual(result["cloud_model"], "gpt-oss:120b")
+        self.assertTrue(clive_settings.load_settings()["cloud_enabled"])
+
+    def test_a_local_model_must_run_locally(self):
+        with self.assertRaises(ValueError):
+            clive_settings.select_model("local", "gpt-oss:120b-cloud", has_key=True)
+        self.assertFalse(self.path.exists())
+
+    def test_saved_models_can_be_added_and_removed_but_not_the_active_one(self):
+        clive_settings.edit_saved_models("local", "llama3.2:3b", True)
+        self.assertEqual(clive_settings.load_settings()["local_models"], ["qwen3.5:4b", "llama3.2:3b"])
+        with self.assertRaisesRegex(ValueError, "Switch to another model"):
+            clive_settings.edit_saved_models("local", "qwen3.5:4b", False)
+        clive_settings.edit_saved_models("local", "llama3.2:3b", False)
+        self.assertEqual(clive_settings.load_settings()["local_models"], ["qwen3.5:4b"])
+
+    def test_the_selection_reports_whether_the_cloud_is_usable(self):
+        self.confirm_cloud()
+        chosen = clive_settings.selection(clive_settings.load_settings(), has_key=False)
+        self.assertEqual(chosen["endpoint"], "local")
+        self.assertFalse(chosen["cloud_ready"])
+        self.assertTrue(clive_settings.selection(clive_settings.load_settings(), True)["cloud_ready"])
+
+    def test_parallel_changes_are_never_lost(self):
+        import threading
+        names = [f"model{index}:1b" for index in range(12)]
+        barrier = threading.Barrier(len(names))
+
+        def add(name):
+            barrier.wait()
+            clive_settings.edit_saved_models("local", name, True)
+
+        threads = [threading.Thread(target=add, args=(name,)) for name in names]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        saved = clive_settings.load_settings()["local_models"]
+        self.assertEqual(sorted(saved), sorted(["qwen3.5:4b", *names]))
+        self.assertEqual(list(self.path.parent.glob("*.tmp")), [], "a temporary file was left behind")
+
+    def test_an_unknown_key_state_does_not_grey_out_the_cloud(self):
+        self.confirm_cloud()
+        self.assertTrue(clive_settings.selection(clive_settings.load_settings(), None)["cloud_ready"])
+
+    def test_service_switches_models_even_during_a_task_and_publishes(self):
+        svc = service.Service.__new__(service.Service)
+        svc.agent = Busy(True)
+        published = []
+        svc.publish = published.append
+        svc.has_key = True
+        self.confirm_cloud()
+        result = svc._dispatch({"op": "model_select", "endpoint": "cloud"})
+        self.assertEqual(result["endpoint"], "cloud")
+        self.assertTrue(published, "a model switch must reach the card and the chat at once")
+        result = svc._dispatch({"op": "model_select", "endpoint": "local"})
+        self.assertEqual(result["endpoint"], "local")
+        with self.assertRaises(ValueError):
+            svc._dispatch({"op": "model_add", "endpoint": "local", "model": "two words"})
+
+
 class Busy:
     def __init__(self, busy):
         self._busy = busy
 
     def busy(self):
         return self._busy
+
+    def snapshot(self):
+        return {"status": "running" if self._busy else "idle"}
 
 
 class ConfigureTests(unittest.TestCase):
@@ -154,6 +252,9 @@ class ConfigureTests(unittest.TestCase):
         self.stored_key = ""
         self.service = service.Service.__new__(service.Service)
         self.service.agent = Busy(False)
+        self.published = []
+        self.service.publish = self.published.append
+        self.service.has_key = False
 
     def configure(self, request, key_error=None):
         def set_key(value):

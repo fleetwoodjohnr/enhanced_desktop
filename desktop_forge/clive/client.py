@@ -8,7 +8,7 @@ from .settings import BUS_NAME, INTERFACE, OBJECT_PATH
 # The model test runs real inference on a local model that may manage only a
 # few tokens a second; the key check is one round trip to Ollama Cloud; storing
 # a credential blocks while a locked login keyring prompts the user.
-TIMEOUTS = {"validate": 2400000, "check_key": 30000, "configure": 90000}
+TIMEOUTS = {"validate": 2400000, "check_key": 30000, "configure": 90000, "models_available": 30000}
 
 
 class Client:

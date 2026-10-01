@@ -13,6 +13,7 @@ import copy
 import json
 import os
 import re
+import tempfile
 import uuid
 from dataclasses import asdict, dataclass, field
 from typing import Any
@@ -142,6 +143,7 @@ WIDGET_TYPES = {
     "todos": {"provider": "todos", "title": "To-Do", "size": (420, 320)},
     "news": {"provider": "news", "title": "News", "size": (420, 340)},
     "system": {"provider": "system", "title": "System Monitor", "size": (300, 190)},
+    "terminal": {"provider": None, "title": "Terminal", "size": (560, 360)},
 }
 
 # Bright system-style accents give each card an identity while retaining a
@@ -156,6 +158,7 @@ WIDGET_ACCENTS = {
     "todos": "#5e5ce6",
     "news": "#af52de",
     "system": "#30d158",
+    "terminal": "#64d2ff",
 }
 
 
@@ -233,12 +236,29 @@ DEFAULT_CHROME: dict[str, dict[str, Any]] = {
         "height": 32,
         "opacity": 0.96,
         "foreground_mode": "auto",
+        # Behaviour of the hiding modes, in seconds where timed. Mirrored by
+        # CHROME_DEFAULTS in extension/chromeLogic.js.
+        "reveal_delay": 0.1,
+        "hide_delay": 0.5,
+        "animation_time": 0.2,
+        "reveal_method": "hover",
+        "sensitivity": "medium",
+        "hide_when": "any",
+        "reveal_in_fullscreen": False,
     },
     "dock": {
         "opacity": 0.92,
         "foreground_mode": "auto",
     },
 }
+
+TOP_BAR_MODES = ("always", "intelligent", "auto")
+TOP_BAR_HIDE_WHEN = ("any", "focused", "maximized")
+TOP_BAR_REVEAL_METHODS = ("hover", "pressure")
+TOP_BAR_SENSITIVITIES = ("low", "medium", "high")
+# Inclusive (minimum, maximum) seconds for the timed top-bar settings.
+TOP_BAR_TIMINGS = {"reveal_delay": (0.0, 2.0), "hide_delay": (0.0, 5.0),
+                   "animation_time": (0.0, 1.0)}
 
 CHROME_PALETTES = {
     "light": {
@@ -274,11 +294,14 @@ class Config:
     chrome: dict[str, dict[str, Any]] = field(default_factory=dict)
     desktop_icons: dict[str, Any] = field(default_factory=dict)
     # Set by the GUI to put the extension into layout-editing mode, and
-    # cleared when the user finishes editing. It lives in
-    # config.json rather than GSettings because the extension deliberately
-    # ships no schema of its own -- config.json is the one channel between the
-    # app and extension.
+    # cleared when the user finishes editing. Like everything the app tells
+    # the extension, it lives in files under ~/.config/desktop-forge
+    # (config.json here, desktop.json for customization). The extension's one
+    # GSettings schema holds only keyboard shortcuts, because Shell's
+    # keybinding API reads nothing else.
     edit_layout: bool = False
+    # Saved widget arrangements: name -> [{id, enabled, monitor, x, y, width, height}].
+    layouts: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
 
     def provider_options(self, name: str) -> dict[str, Any]:
         """Defaults merged with the user's overrides.
@@ -321,13 +344,22 @@ class Config:
             ):
                 merged.pop(key)
         if surface == "top_bar":
-            if merged.get("visibility") not in ("always", "intelligent", "auto"):
-                merged["visibility"] = DEFAULT_CHROME[surface]["visibility"]
-            if merged.get("position") not in ("top", "bottom"):
-                merged["position"] = DEFAULT_CHROME[surface]["position"]
+            defaults = DEFAULT_CHROME[surface]
+            for key, allowed in (("visibility", TOP_BAR_MODES), ("position", ("top", "bottom")),
+                                 ("hide_when", TOP_BAR_HIDE_WHEN),
+                                 ("reveal_method", TOP_BAR_REVEAL_METHODS),
+                                 ("sensitivity", TOP_BAR_SENSITIVITIES)):
+                if merged.get(key) not in allowed:
+                    merged[key] = defaults[key]
             height = merged.get("height")
             merged["height"] = max(24, min(64, round(height))) \
-                if isinstance(height, (int, float)) else DEFAULT_CHROME[surface]["height"]
+                if _is_number(height) else defaults["height"]
+            for key, (low, high) in TOP_BAR_TIMINGS.items():
+                value = merged.get(key)
+                merged[key] = max(low, min(high, float(value))) \
+                    if _is_number(value) else defaults[key]
+            if not isinstance(merged.get("reveal_in_fullscreen"), bool):
+                merged["reveal_in_fullscreen"] = defaults["reveal_in_fullscreen"]
         return merged
 
     def desktop_icon_options(self) -> dict[str, Any]:
@@ -367,7 +399,12 @@ class Config:
             "chrome": self.chrome,
             "desktop_icons": self.desktop_icons,
             "edit_layout": self.edit_layout,
+            "layouts": self.layouts,
         }
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
 def default_config() -> Config:
@@ -424,7 +461,69 @@ def load() -> Config:
         desktop_icons=(raw.get("desktop_icons", {})
                        if isinstance(raw.get("desktop_icons", {}), dict) else {}),
         edit_layout=bool(raw.get("edit_layout", False)),
+        layouts=_clean_layouts(raw.get("layouts")),
     )
+
+
+# -- saved widget layouts ------------------------------------------------------
+
+LAYOUT_NAME_LIMIT = 40
+LAYOUT_LIMIT = 20
+_PLACE_FIELDS = ("monitor", "x", "y", "width", "height")
+
+
+def _clean_layouts(raw: Any) -> dict[str, list[dict[str, Any]]]:
+    """Saved layouts from the file, dropping anything malformed."""
+    if not isinstance(raw, dict):
+        return {}
+    layouts = {}
+    for name, entries in raw.items():
+        if len(layouts) >= LAYOUT_LIMIT:
+            break
+        if not isinstance(name, str) or not name.strip() or len(name) > LAYOUT_NAME_LIMIT:
+            continue
+        if not isinstance(entries, list):
+            continue
+        clean = []
+        for entry in entries:
+            if (isinstance(entry, dict) and isinstance(entry.get("id"), str)
+                    and all(isinstance(entry.get(f), int) and not isinstance(entry.get(f), bool)
+                            for f in _PLACE_FIELDS)):
+                clean.append({"id": entry["id"], "enabled": entry.get("enabled") is not False,
+                              **{f: entry[f] for f in _PLACE_FIELDS}})
+        layouts[name] = clean
+    return layouts
+
+
+def save_layout(config: Config, name: str) -> None:
+    """Remember where every widget is now, and which are shown, as `name`."""
+    name = name.strip()[:LAYOUT_NAME_LIMIT]
+    if not name:
+        raise ValueError("A layout needs a name")
+    if name not in config.layouts and len(config.layouts) >= LAYOUT_LIMIT:
+        raise ValueError(f"At most {LAYOUT_LIMIT} layouts can be saved")
+    config.layouts[name] = [{"id": w.id, "enabled": w.enabled, **{f: getattr(w, f) for f in _PLACE_FIELDS}}
+                            for w in config.widgets]
+
+
+def apply_layout(config: Config, name: str) -> bool:
+    """Put widgets back where layout `name` had them. Widgets added since
+    keep their place; widgets removed since are ignored."""
+    entries = config.layouts.get(name)
+    if entries is None:
+        return False
+    by_id = {entry["id"]: entry for entry in entries}
+    for widget in config.widgets:
+        entry = by_id.get(widget.id)
+        if entry:
+            widget.enabled = entry["enabled"]
+            for f in _PLACE_FIELDS:
+                setattr(widget, f, entry[f])
+    return True
+
+
+def delete_layout(config: Config, name: str) -> None:
+    config.layouts.pop(name, None)
 
 
 def save(config: Config) -> None:
@@ -445,6 +544,12 @@ def migrate() -> None:
     save(load())
 
 
+# Read once, at import, while nothing else can be running: os.umask() can only
+# be queried by setting it, which is not safe to do from worker threads.
+_UMASK = os.umask(0)
+os.umask(_UMASK)
+
+
 def write_json(path: str, payload: dict[str, Any]) -> None:
     """Write JSON atomically.
 
@@ -453,14 +558,31 @@ def write_json(path: str, payload: dict[str, Any]) -> None:
     temp file in the same directory and is renamed into place -- rename is
     atomic within a filesystem, so a reader sees either the old file or the
     new one, never a partial one.
+
+    The temp file is unique per call, not per process: the CLIVE service
+    writes from several request threads, and two writers sharing one temp
+    name interleave their bytes into a corrupt file.
     """
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = f"{path}.tmp-{os.getpid()}"
-    with open(tmp, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2)
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.replace(tmp, path)
+    directory = os.path.dirname(path)
+    os.makedirs(directory, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix=f".{os.path.basename(path)}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2)
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            mode = os.stat(path).st_mode & 0o777
+        except FileNotFoundError:
+            mode = 0o666 & ~_UMASK
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def read_json(path: str) -> dict[str, Any] | None:

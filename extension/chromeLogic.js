@@ -1,5 +1,12 @@
 /** Pure shell-chrome configuration and CSS helpers, kept free of Shell imports. */
 
+export const TOP_BAR_MODES = Object.freeze(['always', 'intelligent', 'auto']);
+export const HIDE_WHEN = Object.freeze(['any', 'focused', 'maximized']);
+export const REVEAL_METHODS = Object.freeze(['hover', 'pressure']);
+export const SENSITIVITIES = Object.freeze(['low', 'medium', 'high']);
+
+// Mirrored by desktop_forge/config.py DEFAULT_CHROME; tests/test_config.py
+// compares the two so they cannot drift apart.
 export const CHROME_DEFAULTS = Object.freeze({
     top_bar: Object.freeze({
         visibility: 'always',
@@ -7,23 +14,18 @@ export const CHROME_DEFAULTS = Object.freeze({
         height: 32,
         opacity: 0.96,
         foreground_mode: 'auto',
+        reveal_delay: 0.1,
+        hide_delay: 0.5,
+        animation_time: 0.2,
+        reveal_method: 'hover',
+        sensitivity: 'medium',
+        hide_when: 'any',
+        reveal_in_fullscreen: false,
     }),
     dock: Object.freeze({
         opacity: 0.92,
         foreground_mode: 'auto',
     }),
-});
-
-export const DOCK_BEHAVIOR_DEFAULTS = Object.freeze({
-    animation_time: 0.2,
-    show_delay: 0.25,
-    hide_delay: 0.2,
-    require_pressure: true,
-    pressure_threshold: 100,
-    autohide_in_fullscreen: false,
-    // Keep the top bar's historical maximized-window behavior when the
-    // Dash-to-Dock schema is not installed.
-    intellihide_mode: 'MAXIMIZED_WINDOWS',
 });
 
 const PALETTES = Object.freeze({
@@ -73,22 +75,32 @@ export function resolveChrome(configured, dark = false) {
     const dockBackground = normalizeHex(rawDock.background, palette.dock.background);
     const topMode = rawTop.foreground_mode === 'custom' ? 'custom' : 'auto';
     const dockMode = rawDock.foreground_mode === 'custom' ? 'custom' : 'auto';
+    const defaults = CHROME_DEFAULTS.top_bar;
 
     return {
         top_bar: {
-            visibility: ['always', 'intelligent', 'auto'].includes(rawTop.visibility)
-                ? rawTop.visibility : CHROME_DEFAULTS.top_bar.visibility,
+            visibility: TOP_BAR_MODES.includes(rawTop.visibility)
+                ? rawTop.visibility : defaults.visibility,
             position: ['top', 'bottom'].includes(rawTop.position)
-                ? rawTop.position : CHROME_DEFAULTS.top_bar.position,
-            height: Math.round(clampNumber(
-                rawTop.height, 24, 64, CHROME_DEFAULTS.top_bar.height)),
+                ? rawTop.position : defaults.position,
+            height: Math.round(clampNumber(rawTop.height, 24, 64, defaults.height)),
             background: topBackground,
-            opacity: clampNumber(
-                rawTop.opacity, 0, 1, CHROME_DEFAULTS.top_bar.opacity),
+            opacity: clampNumber(rawTop.opacity, 0, 1, defaults.opacity),
             foreground_mode: topMode,
             foreground: topMode === 'auto'
                 ? automaticForeground(topBackground)
                 : normalizeHex(rawTop.foreground, palette.top_bar.foreground),
+            reveal_delay: clampNumber(rawTop.reveal_delay, 0, 2, defaults.reveal_delay),
+            hide_delay: clampNumber(rawTop.hide_delay, 0, 5, defaults.hide_delay),
+            animation_time: clampNumber(rawTop.animation_time, 0, 1, defaults.animation_time),
+            reveal_method: REVEAL_METHODS.includes(rawTop.reveal_method)
+                ? rawTop.reveal_method : defaults.reveal_method,
+            sensitivity: SENSITIVITIES.includes(rawTop.sensitivity)
+                ? rawTop.sensitivity : defaults.sensitivity,
+            hide_when: HIDE_WHEN.includes(rawTop.hide_when)
+                ? rawTop.hide_when : defaults.hide_when,
+            reveal_in_fullscreen: typeof rawTop.reveal_in_fullscreen === 'boolean'
+                ? rawTop.reveal_in_fullscreen : defaults.reveal_in_fullscreen,
         },
         dock: {
             background: dockBackground,
@@ -99,28 +111,6 @@ export function resolveChrome(configured, dark = false) {
                 ? automaticForeground(dockBackground)
                 : normalizeHex(rawDock.foreground, palette.dock.foreground),
         },
-    };
-}
-
-export function resolveDockBehavior(configured = {}) {
-    const defaults = DOCK_BEHAVIOR_DEFAULTS;
-    const mode = typeof configured.intellihide_mode === 'string'
-        ? configured.intellihide_mode.toUpperCase() : '';
-    return {
-        animation_time: clampNumber(
-            configured.animation_time, 0, 5, defaults.animation_time),
-        show_delay: clampNumber(configured.show_delay, 0, 5, defaults.show_delay),
-        hide_delay: clampNumber(configured.hide_delay, 0, 5, defaults.hide_delay),
-        require_pressure: typeof configured.require_pressure === 'boolean'
-            ? configured.require_pressure : defaults.require_pressure,
-        pressure_threshold: clampNumber(
-            configured.pressure_threshold, 0, 1000, defaults.pressure_threshold),
-        autohide_in_fullscreen: typeof configured.autohide_in_fullscreen === 'boolean'
-            ? configured.autohide_in_fullscreen : defaults.autohide_in_fullscreen,
-        intellihide_mode: [
-            'ALL_WINDOWS', 'FOCUS_APPLICATION_WINDOWS',
-            'MAXIMIZED_WINDOWS', 'ALWAYS_ON_TOP',
-        ].includes(mode) ? mode : defaults.intellihide_mode,
     };
 }
 
@@ -192,16 +182,88 @@ export function chromeStylesheet(chrome) {
 `;
 }
 
-export function topBarShouldHide(mode, overlaps, overview, heldOpen) {
-    if (overview || heldOpen || mode === 'always')
-        return false;
-    return mode === 'auto' || (mode === 'intelligent' && overlaps);
+/** How far the edge reaches and how hard it has to be pushed, per sensitivity. */
+export function edgeActivation(sensitivity) {
+    const level = SENSITIVITIES.includes(sensitivity) ? sensitivity : 'medium';
+    return {
+        // Logical pixels from the screen edge that count as "at the edge".
+        band: {low: 1, medium: 2, high: 4}[level],
+        // Pixels of pointer travel into the edge a pressure reveal needs.
+        pressure: {low: 220, medium: 120, high: 50}[level],
+    };
 }
 
+/**
+ * Should the bar be on screen right now?
+ *
+ * `held` is the user's own reveal: the pointer reached the edge or is resting
+ * on the bar. A menu or keyboard focus in the bar holds it regardless of the
+ * fullscreen rule, because a menu opened from an off-screen bar has nowhere
+ * to anchor. The lock screen always shows it: it carries the lock screen's own
+ * battery and network indicators.
+ */
+export function barShouldShow(situation) {
+    const s = situation ?? {};
+    if (s.locked || s.overview || s.mode === 'always')
+        return true;
+    if (s.menuOpen || s.keyFocus)
+        return true;
+    if (s.fullscreen && !s.revealInFullscreen)
+        return false;
+    if (s.held)
+        return true;
+    if (s.mode === 'auto')
+        return false;
+    return !s.overlap;
+}
+
+/** Whether reaching the edge may reveal a hidden bar at all. */
+export function revealAllowed(situation) {
+    const s = situation ?? {};
+    return !s.locked && !s.overview && s.mode !== 'always' &&
+        (!s.fullscreen || !!s.revealInFullscreen);
+}
+
+export function rectsIntersect(a, b) {
+    return !!a && !!b && a.x < b.x + b.width && a.x + a.width > b.x &&
+        a.y < b.y + b.height && a.y + a.height > b.y;
+}
+
+/**
+ * Does any counted window cover the bar, under the chosen hide rule?
+ *
+ * Geometry decides, whichever monitor a window calls home: one straddling in
+ * from the next display covers the bar exactly as much as a local one.
+ * Edges are exclusive, so a window resting flush against the bar is clear.
+ */
+export function barOverlap(windows, bar, hideWhen = 'any') {
+    return (windows ?? []).some(window => {
+        if (!rectsIntersect(window.rect, bar))
+            return false;
+        if (hideWhen === 'focused')
+            return !!window.focusedApp;
+        if (hideWhen === 'maximized')
+            return !!window.maximized;
+        return true;
+    });
+}
+
+/** Translation that takes the whole bar off its monitor, or 0 when shown. */
 export function panelTranslation(position, height, hidden) {
     if (!hidden)
         return 0;
-    return position === 'bottom' ? height - 1 : 1 - height;
+    return position === 'bottom' ? height : -height;
+}
+
+/** The band along the bar's screen edge that counts as reaching it. */
+export function pointerAtEdge(position, monitor, band, pointerX, pointerY) {
+    if (!monitor || pointerX < monitor.x || pointerX >= monitor.x + monitor.width)
+        return false;
+    if (position === 'bottom') {
+        const edge = monitor.y + monitor.height;
+        return pointerY >= edge - band && pointerY < edge;
+    }
+    return pointerY >= monitor.y && pointerY < monitor.y + band;
 }
 
 /** The stable shown-panel area, including the screen edge that revealed it. */
@@ -215,4 +277,30 @@ export function pointerInPanelCorridor(position, monitor, panel, pointerX, point
     if (position === 'bottom')
         return pointerY >= panel.y && pointerY < monitor.y + monitor.height;
     return pointerY >= monitor.y && pointerY < panel.y + panel.height;
+}
+
+/**
+ * Coalesces a burst of window changes into one decision.
+ *
+ * `now` is injected so the rule is testable: a change restarts the quiet
+ * period, but never beyond `maxWait` after the first change of the burst,
+ * so a window that animates forever still gets evaluated.
+ */
+export class SettleTimer {
+    constructor(quiet, maxWait) {
+        this.quiet = quiet;
+        this.maxWait = maxWait;
+        this.first = null;
+    }
+
+    /** Milliseconds to wait before deciding, after a change at `now`. */
+    delayFor(now) {
+        if (this.first === null)
+            this.first = now;
+        return Math.max(0, Math.min(this.quiet, this.first + this.maxWait - now));
+    }
+
+    settled() {
+        this.first = null;
+    }
 }

@@ -14,6 +14,7 @@ const XML = `<node>
       <arg name="desktop_id" type="s" direction="in"/>
       <arg name="activated" type="b" direction="out"/>
     </method>
+    <method name="Features"><arg name="features" type="s" direction="out"/></method>
   </interface>
 </node>`;
 
@@ -25,7 +26,9 @@ const WINDOW_TYPES = new Set([
 
 /** Give CLIVE stable app identity/focus data that Wayland withholds from clients. */
 export class DesktopBridge {
-    constructor() {
+    /** @param {() => object} features - what this extension build can apply */
+    constructor(features = () => ({})) {
+        this._features = features;
         this._tracker = Shell.WindowTracker.get_default();
         this._export = Gio.DBusExportedObject.wrapJSObject(XML, this);
         this._export.export(Gio.DBus.session, OBJECT_PATH);
@@ -49,9 +52,14 @@ export class DesktopBridge {
             pid: window.get_pid?.() ?? 0,
             wm_class: window.get_wm_class?.() ?? '',
             wm_class_instance: window.get_wm_class_instance?.() ?? '',
+            // Window rules match on this; the same words rulesLogic.js uses.
+            type: window.get_window_type() === Meta.WindowType.NORMAL ? 'normal' : 'dialog',
             focused: global.display.focus_window === window,
             minimized: !!window.minimized,
             monitor: window.get_monitor?.() ?? -1,
+            // Where the window is, in global logical pixels, so CLIVE can crop
+            // a screenshot to this one window rather than the whole display.
+            frame: (rect => [rect.x, rect.y, rect.width, rect.height])(window.get_frame_rect()),
         };
     }
 
@@ -60,6 +68,14 @@ export class DesktopBridge {
             .map(actor => this._record(actor.meta_window))
             .filter(record => !!record);
         return JSON.stringify(records);
+    }
+
+    /**
+     * The customization modules this running extension has, so the app can
+     * tell the user to log out and back in when it is an older build.
+     */
+    Features() {
+        return JSON.stringify(this._features());
     }
 
     Activate(desktopId) {

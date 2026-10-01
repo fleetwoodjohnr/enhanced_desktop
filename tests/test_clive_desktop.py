@@ -22,6 +22,8 @@ class DesktopTests(unittest.TestCase):
         desktop.session = "/org/freedesktop/portal/desktop/session/test"
         desktop.stream = 27
         desktop.stream_size = (960, 540)
+        desktop.stream_position = (0, 0)
+        desktop.crop = None
         desktop.shot = "frame"
         desktop.shot_app = "test"
         desktop.shot_time = time.monotonic()
@@ -38,6 +40,25 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual(calls[1].args[4].unpack()[-2:], (272, 1))
         self.assertEqual(calls[2].args[4].unpack()[-2:], (272, 0))
         self.assertEqual(result["screenshot"], "after")
+
+    def test_clicks_map_through_the_window_crop(self):
+        desktop = self.desktop()
+        desktop.crop = (100, 50, 400, 200)
+        desktop.call("click", app="test", screenshot="frame", x=500, y=1000)
+        motion = next(c for c in desktop.bus.call_sync.call_args_list
+                      if c.args[3] == "NotifyPointerMotionAbsolute")
+        _session, _options, _stream, x, y = motion.args[4].unpack()
+        self.assertEqual((x, y), (300.0, 250.0))
+
+    def test_screenshots_are_cut_to_the_target_window(self):
+        crop = desktop_module.crop_rect
+        # A window on a monitor placed at (1536, 0) in the global layout.
+        self.assertEqual(crop([1636, 40, 800, 600], (1536, 0), (2560, 1440)), (100, 40, 800, 600))
+        # Hanging off the edge: only the visible part.
+        self.assertEqual(crop([-50, 10, 300, 200], (0, 0), (1536, 864)), (0, 10, 250, 200))
+        # On another monitor entirely: nothing to send.
+        self.assertIsNone(crop([10, 10, 300, 200], (1536, 0), (2560, 1440)))
+        self.assertEqual(desktop_module.map_point((100, 40, 800, 600), 0, 1000), (100, 640))
 
     def test_changed_focus_and_stale_screenshot_never_send_input(self):
         desktop = self.desktop()

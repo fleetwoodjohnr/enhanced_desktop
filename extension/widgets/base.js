@@ -233,29 +233,51 @@ export const DesktopWidget = GObject.registerClass({
 });
 
 /** A thin progress bar, used by the system monitor. */
+/**
+ * A progress track whose fill is sized during the track's own allocation.
+ *
+ * Resizing the fill from a notify::allocation handler queued a relayout in
+ * the middle of layout, leaving the whole card unallocated for a frame
+ * ("Can't update stage views ... needs an allocation").
+ */
+const MeterTrack = GObject.registerClass(
+class MeterTrack extends St.Widget {
+    _init(accent) {
+        super._init({
+            style_class: 'df-meter-track',
+            x_expand: true,
+            clip_to_allocation: true,
+            layout_manager: new Clutter.FixedLayout(),
+        });
+        this._percent = 0;
+        this._fill = new St.Widget({style_class: 'df-meter-fill'});
+        this._fill.set_style(`background-color: ${accent}`);
+        this.add_child(this._fill);
+    }
+
+    setPercent(value) {
+        const percent = Math.max(0, Math.min(100, value ?? 0));
+        if (percent === this._percent)
+            return;
+        this._percent = percent;
+        this.queue_relayout();
+    }
+
+    vfunc_allocate(box) {
+        this.set_allocation(box);
+        const fill = new Clutter.ActorBox();
+        fill.set_origin(0, 0);
+        fill.set_size(meterFillWidth(box.get_width(), this._percent), box.get_height());
+        this._fill.allocate(fill);
+    }
+});
+
 export function meter(accent) {
-    const track = new St.Widget({
-        style_class: 'df-meter-track',
-        x_expand: true,
-        clip_to_allocation: true,
-        layout_manager: new Clutter.FixedLayout(),
-    });
-    const fill = new St.Widget({
-        style_class: 'df-meter-fill',
-    });
-    fill.set_style(`background-color: ${accent}`);
-    track.add_child(fill);
-    let percent = 0;
-    const allocate = () => {
-        fill.set_position(0, 0);
-        fill.set_size(meterFillWidth(track.width, percent), track.height);
-    };
-    track.connect('notify::allocation', allocate);
+    const track = new MeterTrack(accent);
     return {
         actor: track,
         set(value) {
-            percent = Math.max(0, Math.min(100, value ?? 0));
-            allocate();
+            track.setPercent(value);
         },
     };
 }

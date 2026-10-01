@@ -8,31 +8,6 @@ export function rectanglesOverlap(first, second) {
 }
 
 /** Mirrors attachments.MAX_FILES; the service is what actually enforces it. */
-export const MAX_ATTACHMENTS = 8;
-
-/**
- * Merge newly picked files into the staged list.
- *
- * The picker can hand back a file that is already staged, and the user can
- * keep picking past the ceiling. Order is the order they were chosen in, and
- * `overflow` says whether anything had to be turned away, so the card can tell
- * the user rather than dropping files quietly.
- */
-export function addAttachmentPaths(existing, picked, max = MAX_ATTACHMENTS) {
-    const paths = Array.isArray(existing) ? existing.filter(one => typeof one === 'string' && one) : [];
-    let overflow = false;
-    for (const path of Array.isArray(picked) ? picked : []) {
-        if (typeof path !== 'string' || !path || paths.includes(path))
-            continue;
-        if (paths.length >= max) {
-            overflow = true;
-            continue;
-        }
-        paths.push(path);
-    }
-    return {paths, overflow};
-}
-
 /** Choose the Shell layer without importing Shell modules into unit tests. */
 export function widgetLayer(interactive, covered) {
     if (interactive && !covered)
@@ -94,4 +69,89 @@ export function newsOptions(config) {
     if ((config.version ?? 1) < 3 && !options.topic_presets?.length)
         options.topic_presets = NEWS_TOPIC_IDS;
     return options;
+}
+
+// -- system widget ---------------------------------------------------------
+
+export const MAIN_THERMAL_KINDS = Object.freeze(['cpu', 'gpu', 'disk']);
+
+// Where a reading starts to look warm or hot when the sensor reports no
+// limit of its own (Ryzen's Tctl and AMD graphics report none).
+const THERMAL_DEFAULTS = Object.freeze({
+    cpu: [80, 90], gpu: [80, 95], disk: [60, 70], board: [70, 85], wifi: [70, 85],
+});
+
+export function formatTemperature(celsius, unit = 'celsius') {
+    if (!Number.isFinite(celsius))
+        return '--';
+    return unit === 'fahrenheit'
+        ? `${Math.round(celsius * 9 / 5 + 32)}°F` : `${Math.round(celsius)}°C`;
+}
+
+/** 'normal', 'warm' (within 10° of the limit) or 'hot' (at or past it). */
+export function thermalLevel(sensor) {
+    const celsius = sensor?.celsius;
+    if (!Number.isFinite(celsius))
+        return 'normal';
+    const high = Number.isFinite(sensor.high) ? sensor.high : null;
+    const [warm, hot] = high !== null
+        ? [high - 10, high] : THERMAL_DEFAULTS[sensor.kind] ?? [75, 90];
+    if (celsius >= hot)
+        return 'hot';
+    return celsius >= warm ? 'warm' : 'normal';
+}
+
+/** The sensors a card shows: the headline three, or every chip. */
+export function visibleSensors(thermals, which = 'main') {
+    const sensors = Array.isArray(thermals?.sensors) ? thermals.sensors : [];
+    return which === 'all' ? sensors
+        : sensors.filter(sensor => MAIN_THERMAL_KINDS.includes(sensor.kind));
+}
+
+export function formatRate(bytesPerSecond) {
+    if (!Number.isFinite(bytesPerSecond))
+        return '--';
+    const units = ['B', 'K', 'M', 'G'];
+    let value = bytesPerSecond;
+    let index = 0;
+    while (value >= 1024 && index < units.length - 1) {
+        value /= 1024;
+        index++;
+    }
+    return `${value < 10 ? value.toFixed(1) : Math.round(value)}${units[index]}/s`;
+}
+
+/** Title, detail line and icon for the network section. */
+export function describeConnection(network, {showIp = true} = {}) {
+    if (!network || network.state === 'disconnected' || !network.state)
+        return {title: network ? 'Offline' : 'Network unavailable', detail: '',
+            icon: 'network-offline-symbolic'};
+    if (network.state === 'connecting')
+        return {title: 'Connecting…', detail: '', icon: 'network-wireless-acquiring-symbolic'};
+    let title = network.name ?? network.interface ?? 'Connected';
+    let icon = 'network-wired-symbolic';
+    if (network.kind === 'wifi') {
+        title = network.ssid ?? title;
+        const signal = Number.isFinite(network.signal) ? network.signal : null;
+        const level = signal === null ? 'good' : signal >= 75 ? 'excellent'
+            : signal >= 50 ? 'good' : signal >= 25 ? 'ok' : 'weak';
+        icon = `network-wireless-signal-${level}-symbolic`;
+        if (signal !== null)
+            title = `${title} · ${signal}%`;
+    } else if (network.kind === 'ethernet') {
+        title = `Wired · ${title}`;
+    } else if (network.kind === 'mobile') {
+        icon = 'network-cellular-signal-good-symbolic';
+    }
+    const vpn = Array.isArray(network.vpn) ? network.vpn.filter(Boolean) : [];
+    const parts = [];
+    if (showIp && network.ipv4)
+        parts.push(network.ipv4);
+    if (vpn.length)
+        parts.push(`VPN ${vpn.join(', ')}`);
+    if (network.metered)
+        parts.push('Metered');
+    if (vpn.length)
+        icon = 'network-vpn-symbolic';
+    return {title, detail: parts.join(' · '), icon};
 }

@@ -5,7 +5,12 @@ import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
+
+import {runFeatures} from './featureChecks.js';
+import {runTerminals} from './terminalChecks.js';
+import {runMultiMonitor, runSingleMonitor} from './topBarChecks.js';
 
 const sleep = ms => new Promise(resolve => GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
     resolve();
@@ -73,6 +78,30 @@ export default class SmokeTest extends Extension {
         const forge = extension?.stateObj;
         if (!forge?._widgets?.length)
             throw new Error(`Production extension did not start: ${extension?.error}`);
+        if (GLib.getenv('DF_TEST_MODE') === 'terminal') {
+            const checks = await runTerminals({forge, screenshot});
+            this._finish({ok: true, scope: 'terminal', checks});
+            return;
+        }
+        if (GLib.getenv('DF_TEST_MODE') === 'features') {
+            const checks = await runFeatures({
+                forge, launcher: new Gio.SubprocessLauncher({flags: Gio.SubprocessFlags.NONE}),
+            });
+            this._finish({ok: true, scope: 'features', checks});
+            return;
+        }
+        if (GLib.getenv('DF_TEST_MODE') === 'topbar') {
+            const virtualPointer = Clutter.get_default_backend().get_default_seat()
+                .create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
+            await runMultiMonitor({
+                forge,
+                movePointer: (x, y) => virtualPointer.notify_absolute_motion(
+                    GLib.get_monotonic_time(), x, y),
+                launcher: new Gio.SubprocessLauncher({flags: Gio.SubprocessFlags.NONE}),
+            });
+            this._finish({ok: true, scope: 'topbar', monitors: Main.layoutManager.monitors.length});
+            return;
+        }
         const initialIconMargin = this._desktopIconMargins?.['-1'];
         assert(initialIconMargin?.top === 32 && initialIconMargin.bottom === 0,
             `Default top bar did not reserve its desktop-icon area: ${
@@ -448,6 +477,22 @@ export default class SmokeTest extends Extension {
         await sleep(600);
         assert(!forge._editMode, 'Layout editing did not close');
 
+        // Choosing a saved widget layout only moves cards: the same actors
+        // stay, at the new place, and saving a layout rebuilds nothing.
+        const moved = JSON.parse(JSON.stringify(originalConfig));
+        const target = moved.widgets.find(w => w.enabled !== false);
+        const card = forge._widgets.find(r => r.entry.id === target.id).widget;
+        const monitorX = Main.layoutManager.monitors[target.monitor ?? 0]?.x ?? 0;
+        target.x += 40;
+        moved.layouts = {Evening: [{id: target.id, enabled: true, monitor: target.monitor ?? 0,
+            x: target.x, y: target.y, width: target.width, height: target.height}]};
+        GLib.file_set_contents(configPath, JSON.stringify(moved));
+        await sleep(600);
+        assert(forge._widgets.some(r => r.widget === card), 'Moving a card by layout rebuilt the widgets');
+        assert(Math.abs(card.x - (monitorX + target.x)) <= 1, `The card did not move to its layout place: ${card.x}`);
+        GLib.file_set_contents(configPath, JSON.stringify(originalConfig));
+        await sleep(600);
+
         if (GLib.getenv('DF_TEST_NEWS_ONLY') === '1') {
             this._finish({ok: true, scope: 'news', batteryRect: [bx, by, bw, bh]});
             return;
@@ -489,11 +534,17 @@ export default class SmokeTest extends Extension {
         let answer = true;
         const cliveState = {id: 'test', conversation: 'chat', version: 1, status: 'awaiting_approval',
             preview: 'Find a file in Documents.', messages: [{role: 'user', content: 'Find my file'}], mode: 'local'};
-        cliveCard.setClient({draft: '', attachments: [],
+        const selection = {endpoint: 'cloud', cloud_model: 'gemma4:31b', local_model: 'qwen3.5:4b',
+            cloud_models: ['gemma4:31b'], local_models: ['qwen3.5:4b', 'llama3.2:3b'],
+            cloud_ready: true, fallback_to_local: true};
+        let settingsOpened = null;
+        const fakeClient = {draft: '', attachments: [], state: {selection},
             subscribe: fn => { fn(cliveState); return () => { unsubscribe = true; }; },
             call: (...args) => { calls.push(args); if (answer) args[2]?.({}); },
             pickFiles: fn => { if (picked.length) fn(picked); },
-            notify: message => notices.push(message), open: () => {}});
+            notify: message => notices.push(message), open: () => {},
+            openSettings: section => { settingsOpened = section; }};
+        cliveCard.setClient(fakeClient);
         Main.layoutManager.addChrome(cliveCard);
         cliveCard.set_position(50, 60);
         await sleep(200);
@@ -506,6 +557,113 @@ export default class SmokeTest extends Extension {
         await sleep(200);
         assert(cliveCard._attach.reactive, 'CLIVE would not attach files once the task finished');
 
+        // The confirmation card: what will happen, and one answer for it.
+        cliveCard.render({...cliveState, status: 'awaiting_confirmation', confirmation: {calls: [
+            {id: 'c1', tool: 'file_trash', capability: 'Move files to Trash', app_name: 'Files',
+                target: '/home/test/old.txt'}]}});
+        await sleep(150);
+        assert(cliveCard._confirmation.visible && !cliveCard._approve.visible &&
+            cliveCard._confirmRows.get_children().map(child => child.text).join('|') ===
+                'Move files to Trash|Files · /home/test/old.txt' && !cliveCard._sendButton.reactive,
+            'The CLIVE card did not show the confirmation it was waiting for');
+        calls = [];
+        cliveCard._confirmButton.emit('clicked', Clutter.BUTTON_PRIMARY);
+        assert(calls[0]?.[0] === 'confirm' && calls[0][1].approved.join() === 'c1',
+            `Confirm did not answer for the listed action: ${JSON.stringify(calls)}`);
+        cliveCard.render({...cliveState, status: 'complete'});
+        await sleep(100);
+        assert(!cliveCard._confirmation.visible, 'The confirmation card outlived its question');
+
+        // With no card on the desktop, CLIVE says so through a notification,
+        // unless the user turned that off.
+        forge._cliveLastStatus = 'running';
+        forge._cliveNotifyTransition({status: 'awaiting_confirmation', preferences: {notify_waiting: false}});
+        assert(!forge._cliveSource, 'A notification was sent although the user turned it off');
+        forge._cliveLastStatus = 'running';
+        forge._cliveNotifyTransition({status: 'awaiting_confirmation', preferences: {},
+            confirmation: {calls: [{capability: 'Move files to Trash', target: '/home/test/old.txt'}]}});
+        const notified = forge._cliveSource?.notifications?.[0];
+        assert(notified?.title === 'CLIVE needs you to confirm an action' &&
+            notified.body === 'Review 1 action in CLIVE.' && !notified.body.includes('old.txt'),
+            `CLIVE did not notify about a waiting confirmation: ${notified?.title}`);
+        forge._cliveSource.destroy();
+        forge._cliveLastStatus = null;
+
+        // The shield: App Access at a glance, and its pause, on the card.
+        fakeClient.state = {...fakeClient.state, access: {paused: false, enabled: 5, total: 9}};
+        cliveCard._shield.emit('clicked', Clutter.BUTTON_PRIMARY);
+        await sleep(300);
+        const accessItems = cliveCard._accessMenu._getMenuItems().filter(item => item.label?.text)
+            .map(item => item.label.text);
+        assert(accessItems.join('|') === '5 of 9 apps can be used|Pause all app access|Manage app access…',
+            `The App Access menu was wrong: ${accessItems}`);
+        calls = [];
+        cliveCard._accessMenu._getMenuItems().find(item => item.label?.text === 'Pause all app access')
+            .activate(Clutter.get_current_event());
+        await sleep(200);
+        assert(calls[0]?.[0] === 'access_pause' && calls[0][1].paused === true, 'Pause did not pause');
+        // Answers render light Markdown, offer their links, and list the actions taken.
+        cliveCard.render({...cliveState, status: 'complete', messages: [
+            {role: 'user', content: 'Where are the docs?'},
+            {role: 'assistant', content: 'See **the** [GNOME docs](https://developer.gnome.org).'}],
+        actions: [{tool: 'web_search', app_name: 'Web & Browser', capability: 'Search the web',
+            target: 'gnome docs', status: 'done'}], preferences: {show_action_details: true}});
+        await sleep(200);
+        const links = cliveCard._messages.get_children().find(child => child.has_style_class_name?.('df-clive-links'));
+        assert(links?.get_children()[0]?.label === 'GNOME docs ↗', 'The answer did not offer its link');
+        const actionTexts = cliveCard._messages.get_children().map(child => child.text).filter(Boolean);
+        assert(actionTexts.includes('✓ Web & Browser · Search the web — gnome docs'),
+            `The actions CLIVE took were not listed: ${actionTexts}`);
+        // What CLIVE is using right now shows as that app's icon.
+        cliveCard.render({...cliveState, status: 'running', activity: 'Searching Files…',
+            activity_icon: 'system-file-manager-symbolic'});
+        await sleep(100);
+        assert(cliveCard._activityIcon.visible, 'The running app\'s icon was not shown');
+        // A narrow card keeps the pill's icon but drops the model name.
+        cliveCard.set_width(260);
+        await sleep(100);
+        assert(!cliveCard._mode.visible && cliveCard._modelButton.visible, 'The narrow header did not compact');
+        cliveCard.set_width(420);
+        await sleep(100);
+        cliveCard.render({...cliveState, status: 'complete'});
+        await sleep(100);
+
+        // The model pill: it names the selection and switches in one click.
+        cliveCard.render({...cliveState, status: 'complete', selection});
+        await sleep(100);
+        assert(cliveCard._mode.text === 'Cloud · gemma4:31b' &&
+            cliveCard._modeIcon.icon_name === 'weather-overcast-symbolic',
+            `The model pill did not show the selected cloud model: ${cliveCard._mode.text}`);
+        calls = [];
+        cliveCard._modelButton.emit('clicked', Clutter.BUTTON_PRIMARY);
+        await sleep(300);
+        const modelMenu = cliveCard._modelMenu;
+        assert(modelMenu?.isOpen, 'The model pill did not open its menu');
+        const modelItems = modelMenu._getMenuItems().filter(item => item.label?.text);
+        const localItem = modelItems.find(item => item.label.text === 'llama3.2:3b');
+        const checked = modelItems.find(item => item.label.text === 'gemma4:31b');
+        assert(localItem && checked?._ornament === PopupMenu.Ornament.CHECK,
+            `The model menu did not list both endpoints with the active one checked: ${
+                modelItems.map(item => item.label.text).join(', ')}`);
+        localItem.activate(Clutter.get_current_event());
+        await sleep(300);
+        assert(calls.some(([op, args]) => op === 'model_select' && args.endpoint === 'local' &&
+            args.model === 'llama3.2:3b'), `Choosing a local model did not switch: ${JSON.stringify(calls)}`);
+        assert(!modelMenu.isOpen && Main.modalCount === 0, 'The model menu left a grab behind');
+        cliveCard.render({...cliveState, status: 'complete',
+            selection: {...selection, endpoint: 'local', local_model: 'llama3.2:3b'}});
+        await sleep(100);
+        assert(cliveCard._mode.text === 'Local · llama3.2:3b' &&
+            cliveCard._modeIcon.icon_name === 'computer-symbolic',
+            'The model pill did not follow the switch to the local model');
+        cliveCard._modelButton.emit('clicked', Clutter.BUTTON_PRIMARY);
+        await sleep(300);
+        const manage = cliveCard._modelMenu._getMenuItems().find(item => item.label?.text === 'Manage models…');
+        manage.activate(Clutter.get_current_event());
+        await sleep(200);
+        assert(settingsOpened === 'models', 'Manage models… did not open CLIVE settings');
+        calls = [];
+
         // Starting a new chat is the one header button that can do nothing, and
         // it says so rather than swallowing the click.
         assert(cliveCard._fresh.reactive, 'New chat was dead on a conversation with messages');
@@ -517,46 +675,59 @@ export default class SmokeTest extends Extension {
         await sleep(100);
 
         // Attaching files. The picker is the portal in the real card; here the
-        // fake answers with paths, which is all the card ever receives.
+        // fake answers with paths. Staging happens in the service, which the
+        // card and the expanded chat share, so the card lists state.draft.
         assert(!cliveCard._attachments.visible, 'The attachment list showed before anything was staged');
         picked = ['/home/someone/notes.md', '/home/someone/shot.png'];
+        calls = [];
         cliveCard._attach.emit('clicked', Clutter.BUTTON_PRIMARY);
+        await sleep(200);
+        assert(calls[0]?.[0] === 'draft_add' && calls[0][1].paths.join() === picked.join(),
+            `Picked files were not staged in the service: ${JSON.stringify(calls)}`);
+        const draft = [
+            {id: 'a', name: 'notes.md', kind: 'text', label: 'Text', size: 2048},
+            {id: 'b', name: 'shot.png', kind: 'image', label: 'Image', size: 340000},
+        ];
+        cliveCard.render({...cliveState, status: 'complete', draft});
         await sleep(200);
         assert(cliveCard._attachments.visible && cliveCard._attachmentRows.get_n_children() === 2,
             `Staged files did not appear: ${cliveCard._attachmentRows.get_n_children()} rows`);
+        // Above the composer, so a newly picked file is always in view.
+        const [, trayY] = cliveCard._attachments.get_transformed_position();
+        const [, entryTop] = cliveCard._entry.get_transformed_position();
+        assert(trayY < entryTop && cliveCard._attachments.get_parent() !== cliveCard._transcript,
+            'The staged files are not right above the composer');
         await screenshot('clive-attachments');
 
-        // Picking the same file again must not stage it twice.
-        cliveCard._attach.emit('clicked', Clutter.BUTTON_PRIMARY);
-        await sleep(200);
-        assert(cliveCard._attachmentRows.get_n_children() === 2, 'A re-picked file was staged twice');
-
-        // Past the ceiling the card says so instead of dropping files quietly.
-        notices = [];
-        picked = Array.from({length: 8}, (_, index) => `/home/someone/extra-${index}.md`);
-        cliveCard._attach.emit('clicked', Clutter.BUTTON_PRIMARY);
-        await sleep(200);
-        assert(cliveCard._attachmentRows.get_n_children() === 8, 'Staging went past the eight-file ceiling');
-        assert(notices.some(one => one.includes('8 files')), `Overflow went unreported: ${notices}`);
-
-        // Each row drops its own file.
+        // Each row drops its own file, in the service.
+        calls = [];
         cliveCard._attachmentRows.get_child_at_index(0).get_children().at(-1)
             .emit('clicked', Clutter.BUTTON_PRIMARY);
-        await sleep(200);
-        assert(cliveCard._attachmentRows.get_n_children() === 7, 'Removing a staged file did not drop a row');
-        assert(!cliveCard._client.attachments.includes('/home/someone/notes.md'),
-            'Removing a row left its path staged');
+        assert(calls[0]?.[0] === 'draft_remove' && calls[0][1].id === 'a', 'Removing a row did not unstage it');
 
-        // A rejected submit keeps the list, so the named file can be dropped.
+        // Files alone are a message; a refused submit keeps everything.
         answer = false;
         calls = [];
-        cliveCard._entry.set_text('look at these');
+        cliveCard._entry.set_text('');
         cliveCard._sendButton.emit('clicked', Clutter.BUTTON_PRIMARY);
-        assert(calls[0][1].attachments.length === 7, 'Send did not carry the staged files');
-        assert(cliveCard._client.attachments.length === 7, 'A refused send discarded the staged files');
+        assert(calls[0]?.[0] === 'submit' && calls[0][1].use_draft === true && calls[0][1].message === '',
+            `Sending staged files without text did not submit them: ${JSON.stringify(calls)}`);
         answer = true;
         picked = [];
-        cliveCard._entry.set_text('');
+        cliveCard.render({...cliveState, status: 'complete', draft: []});
+        await sleep(100);
+        assert(!cliveCard._attachments.visible, 'The tray stayed after the files were sent');
+
+        // A sent message lists its files instead of an "Attached:" line.
+        cliveCard.render({...cliveState, status: 'complete', messages: [{role: 'user',
+            content: 'Summarize\n\nAttached: notes.md', attachments: [{name: 'notes.md', kind: 'text'}]}]});
+        await sleep(150);
+        const texts = cliveCard._messages.get_children().flatMap(child =>
+            [child, ...child.get_children?.() ?? []]).map(actor => actor.text).filter(Boolean);
+        assert(texts.includes('Summarize') && texts.some(text => text.includes('notes.md')) &&
+            !texts.some(text => text.includes('Attached:')), `Message files were not shown: ${texts}`);
+        cliveCard.render({...cliveState, status: 'complete'});
+        await sleep(100);
 
         // Typing on the desktop, through the real input stack. Shell routes key
         // events to the focused window unless something takes a modal grab, so
@@ -595,10 +766,21 @@ export default class SmokeTest extends Extension {
         cliveCard._sendButton.emit('clicked', Clutter.BUTTON_PRIMARY);
         assert(calls[0]?.[0] === 'submit' && calls[0][1].message === 'hi',
             'Send stopped working while the card held the keyboard');
-        assert(calls[0][1].attachments.length === 7, 'Send dropped the staged files');
-        assert(cliveCard._client.attachments.length === 0 && !cliveCard._attachments.visible,
-            'An accepted send left the staged files behind');
+        assert(calls[0][1].use_draft === true, 'Send did not carry the staged files');
         await screenshot('clive-typing');
+        // Enter sends from the real keyboard too; a refusal that arrives while
+        // the card holds the keyboard is shown, not hidden behind the typing hint.
+        calls = [];
+        cliveCard._entry.set_text('again');
+        press(Clutter.KEY_Return);
+        await sleep(300);
+        assert(calls.some(([op, args]) => op === 'submit' && args.message === 'again'),
+            `Enter did not send from the desktop keyboard: ${JSON.stringify(calls)}`);
+        cliveCard.render({...cliveState, status: 'complete', notice: 'notes.md could not be opened'});
+        await sleep(100);
+        assert(cliveCard._activity.text === 'notes.md could not be opened',
+            `A refusal was hidden while typing: ${cliveCard._activity.text}`);
+        cliveCard.render({...cliveState, status: 'complete'});
 
         press(Clutter.KEY_Escape);
         await sleep(300);
@@ -629,236 +811,78 @@ export default class SmokeTest extends Extension {
             'Destroying CLIVE left a modal grab behind');
         assert(unsubscribe, 'CLIVE left a subscription after destruction');
 
-        // Chrome-only config changes must update the real panel without
-        // destroying any desktop card.  Exercise bottom placement, sizing,
-        // generated colors and the one-pixel auto-hide reveal edge.
-        const originalPanelPosition = Main.layoutManager.panelBox.get_position();
-        const originalPanelSize = Main.layoutManager.panelBox.get_size();
-        const widgetActors = forge._widgets.map(record => record.widget);
-        const chromeConfigPath = `${GLib.getenv('XDG_CONFIG_HOME')}/desktop-forge/config.json`;
-        const [ok, bytes] = GLib.file_get_contents(chromeConfigPath);
-        assert(ok, 'Could not read config for shell chrome smoke test');
-        const chromeConfig = JSON.parse(new TextDecoder().decode(bytes));
-        chromeConfig.chrome = {
-            top_bar: {
-                visibility: 'auto', position: 'bottom', height: 40,
-                background: '#336699', opacity: 0.5,
-                foreground_mode: 'auto',
-            },
-            dock: {background: '#112233', opacity: 0.4, foreground_mode: 'auto'},
-        };
-        GLib.file_set_contents(chromeConfigPath, JSON.stringify(chromeConfig));
-        await sleep(900);
-        assert(forge._widgets.every((record, index) => record.widget === widgetActors[index]),
-            'A chrome-only config change rebuilt desktop widgets');
-        const monitor = Main.layoutManager.primaryMonitor;
-        assert(Main.layoutManager.panelBox.y === monitor.y + monitor.height - 40 &&
-            Main.layoutManager.panelBox.height === 40,
-            'Bottom top-bar position or height was not applied');
-        assert(Main.layoutManager.panelBox.translation_y === 39,
-            `Auto-hidden bottom bar did not leave a one-pixel reveal edge: ${
-                Main.layoutManager.panelBox.translation_y}, held=${forge._panelController._heldOpen}, menu=${
-                forge._panelController._menuIsOpen()}`);
-        const autoIconMargin = this._desktopIconMargins?.['-1'];
-        assert(autoIconMargin?.top === 0 && autoIconMargin.bottom === 40,
-            `Auto-hidden bottom bar did not reserve its desktop-icon area: ${
-                JSON.stringify(this._desktopIconMargins)}`);
-        assert(forge._panelController._stylesheetLoaded,
-            'Generated shell chrome stylesheet was not loaded');
-        assert(Main.extensionManager.enableExtension('dash-to-dock@micxgx.gmail.com'),
-            'Dash to Dock is not available to the shell smoke test');
-        for (let i = 0; i < 20 &&
-             !Main.extensionManager.lookup('dash-to-dock@micxgx.gmail.com')?.stateObj; i++)
-            await sleep(100);
+        // Top-bar behavior lives in its own module so the two-monitor run
+        // (tests/run_shell_smoke.sh --top-bar) can share it.
+        await runSingleMonitor({
+            forge, movePointer, launcher, uiLauncher, interfaceSettings,
+            margins: () => this._desktopIconMargins?.['-1'],
+        });
         const dockContainer = descendants(global.stage)
             .find(actor => actor.name === 'dashtodockContainer');
-        assert(dockContainer, 'Dash to Dock did not create its shell actor');
-        const dockBackground = descendants(dockContainer)
+        if (!dockContainer) {
+            assert(Main.extensionManager.enableExtension('dash-to-dock@micxgx.gmail.com'),
+                'Dash to Dock is not available to the shell smoke test');
+        }
+        let dock = null;
+        for (let i = 0; i < 20 && !dock; i++) {
+            dock = descendants(global.stage).find(actor => actor.name === 'dashtodockContainer');
+            if (!dock)
+                await sleep(100);
+        }
+        assert(dock, 'Dash to Dock did not create its shell actor');
+        const dockBackground = descendants(dock)
             .find(actor => actor.get_style_class_name?.()?.split(' ').includes('dash-background'));
         assert(dockBackground, 'Dash-to-Dock background actor was not found');
         const dockColor = dockBackground.get_theme_node().get_background_color();
         assert(Math.abs(dockColor.red - 17) <= 2 && Math.abs(dockColor.green - 34) <= 2 &&
             Math.abs(dockColor.blue - 51) <= 2 && Math.abs(dockColor.alpha - 102) <= 3,
             `Configured dock color or opacity was not rendered: ${dockColor.to_string()}`);
-        assert(forge._panelController._behavior.animation_time === 0.2 &&
-            forge._panelController._behavior.show_delay === 0.1 &&
-            forge._panelController._behavior.hide_delay === 0.2 &&
-            forge._panelController._behavior.require_pressure &&
-            forge._panelController._behavior.intellihide_mode === 'MAXIMIZED_WINDOWS',
-            'Top bar did not mirror Dash-to-Dock behavior settings');
-        movePointer(monitor.x + monitor.width / 2, monitor.y + monitor.height - 1);
-        await sleep(350);
-        assert(Main.layoutManager.panelBox.translation_y === 0,
-            'Pointer at the configured edge did not reveal the top bar');
-        await sleep(900);
-        assert(Main.layoutManager.panelBox.translation_y === 0,
-            'Top bar disappeared while the pointer remained over it');
-        movePointer(1100, 700);
-        await sleep(750);
-        assert(Main.layoutManager.panelBox.translation_y === 39,
-            'Auto-hidden top bar did not hide after pointer exit');
 
-        chromeConfig.chrome.top_bar.visibility = 'intelligent';
-        GLib.file_set_contents(chromeConfigPath, JSON.stringify(chromeConfig));
-        await sleep(600);
-        assert(Main.layoutManager.panelBox.translation_y === 0,
-            'Intelligent top bar hid without a maximized window');
-        const intelligentIconMargin = this._desktopIconMargins?.['-1'];
-        assert(intelligentIconMargin?.top === 0 && intelligentIconMargin.bottom === 40,
-            `Intelligent bottom bar did not retain its desktop-icon area: ${
-                JSON.stringify(this._desktopIconMargins)}`);
-        const intelligentProcess = launcher.spawnv(
-            ['python3', `${GLib.getenv('DF_TEST_ROOT')}/tests/shell-smoke/window.py`]);
-        let intelligentWindow;
-        for (let i = 0; i < 40 && !intelligentWindow; i++) {
-            await sleep(100);
-            intelligentWindow = global.get_window_actors().map(actor => actor.meta_window)
-                .find(candidate => candidate?.title === 'DF repaint test');
-        }
-        assert(intelligentWindow, 'Intelligent-hide test window did not open');
-        const bridgeWindows = JSON.parse(forge._desktopBridge.Windows());
-        const bridgeWindow = bridgeWindows.find(candidate => candidate.title === 'DF repaint test');
-        assert(bridgeWindow?.desktop_id,
-            'Desktop bridge did not publish a stable app ID for the test window');
-        assert(forge._desktopBridge.Activate(bridgeWindow.desktop_id),
-            'Desktop bridge could not activate the test application');
-        const bridgeProbe = uiLauncher.spawnv(
-            ['python3', `${GLib.getenv('DF_TEST_ROOT')}/tests/clive_shell_smoke.py`]);
-        const bridgeOutput = await new Promise((resolve, reject) => {
-            bridgeProbe.communicate_utf8_async(null, null, (process, result) => {
-                try { resolve(process.communicate_utf8_finish(result)[1]); } catch (error) { reject(error); }
-            });
-        });
-        assert(bridgeProbe.get_successful(), `CLIVE could not read the Shell bridge over D-Bus: ${bridgeOutput}`);
-        intelligentWindow.activate(global.get_current_time());
-        await sleep(150);
-        const overlayWorkArea = global.workspace_manager.get_active_workspace()
-            .get_work_area_for_monitor(Main.layoutManager.primaryIndex);
-        intelligentWindow.maximize(Meta.MaximizeFlags.BOTH);
-        await sleep(800);
-        assert(Main.layoutManager.panelBox.translation_y === 39,
-            `Intelligent top bar did not hide for a maximized primary-monitor window: maximized=${
-                intelligentWindow.is_maximized()}, flags=${intelligentWindow.get_maximize_flags()}, monitor=${
-                intelligentWindow.get_monitor()}, visible=${
-                intelligentWindow.showing_on_its_workspace()}, detected=${
-                forge._panelController._primaryHasMaximizedWindow()}, held=${
-                forge._panelController._heldOpen}, overview=${Main.overview.visible}, translation=${
-                Main.layoutManager.panelBox.translation_y}`);
-        assert(forge._panelController._strut === false,
-            'Intelligent top bar unexpectedly reserved a work-area strut');
-        movePointer(monitor.x + monitor.width / 2, monitor.y + monitor.height - 1);
-        await sleep(350);
-        assert(Main.layoutManager.panelBox.translation_y === 0,
-            'Intelligent top bar did not reveal over the maximized application');
-        const revealedWorkArea = global.workspace_manager.get_active_workspace()
-            .get_work_area_for_monitor(Main.layoutManager.primaryIndex);
-        assert(JSON.stringify([revealedWorkArea.x, revealedWorkArea.y,
-            revealedWorkArea.width, revealedWorkArea.height]) ===
-            JSON.stringify([overlayWorkArea.x, overlayWorkArea.y,
-                overlayWorkArea.width, overlayWorkArea.height]),
-            'Revealing the intelligent top bar resized the application work area');
-
-        // Everything above ran with animations off, which skips the SHOWING and
-        // HIDING states entirely -- the states where a reveal used to consume
-        // itself a moment after arriving.  Turn them on for a two-window pass
-        // over exactly that code.
-        interfaceSettings.set_boolean('enable-animations', true);
-        for (let i = 0; i < 20 && !St.Settings.get().enable_animations; i++)
-            await sleep(50);
-        assert(St.Settings.get().enable_animations,
-            'Could not enable animations for the top-bar regression pass');
-        const revealEdge = () => movePointer(
-            monitor.x + monitor.width / 2, monitor.y + monitor.height - 1);
-
-        launcher.spawnv(['python3',
-            `${GLib.getenv('DF_TEST_ROOT')}/tests/shell-smoke/window.py`, 'second']);
-        let secondWindow;
-        for (let i = 0; i < 40 && !secondWindow; i++) {
-            await sleep(100);
-            secondWindow = global.get_window_actors().map(actor => actor.meta_window)
-                .find(candidate => candidate?.title === 'DF second test');
-        }
-        assert(secondWindow, 'Second intelligent-hide test window did not open');
-        secondWindow.move_resize_frame(false, 80, 120, 400, 300);
-        await sleep(300);
-
-        movePointer(1100, 700);
-        await sleep(1000);
-        assert(Main.layoutManager.panelBox.translation_y === 39,
-            'Animated intelligent top bar did not hide with two windows open');
-        revealEdge();
-        await sleep(700);
-        assert(Main.layoutManager.panelBox.translation_y === 0,
-            'Animated top bar did not reveal on a plain edge hover');
-        // The reported bug: it arrived, then slid away again about a second
-        // later while the pointer had not moved.
-        await sleep(1500);
-        assert(Main.layoutManager.panelBox.translation_y === 0,
-            `Revealed top bar hid itself while the pointer rested on it: held=${
-                forge._panelController._heldOpen}, state=${
-                forge._panelController._panelState}, hidden=${
-                forge._panelController._hidden}`);
-        secondWindow.activate(global.get_current_time());
-        await sleep(700);
-        assert(Main.layoutManager.panelBox.translation_y === 0,
-            'Revealed top bar hid when a background window took focus');
-        movePointer(1100, 700);
-        await sleep(1000);
-        assert(Main.layoutManager.panelBox.translation_y === 39,
-            'Animated top bar did not hide again after the pointer left');
-        assert(forge._panelController._dwellWatch,
-            'Top bar hid without re-arming its reveal trigger');
-        // The other half of the report: after one bad cycle the bar could no
-        // longer be revealed at all.
-        revealEdge();
-        await sleep(700);
-        assert(Main.layoutManager.panelBox.translation_y === 0,
-            'Top bar did not reveal on a second hover cycle');
-        movePointer(1100, 700);
-        await sleep(1000);
-
-        // Overlap decides on geometry, not on focus: a window covering the bar
-        // hides it even while a different application is focused.
-        intelligentWindow.unmaximize(Meta.MaximizeFlags.BOTH);
-        await sleep(300);
-        intelligentWindow.move_resize_frame(false, 620, 100, 320, 300);
-        await sleep(500);
-        assert(Main.layoutManager.panelBox.translation_y === 0,
-            'Intelligent top bar stayed hidden with no window covering it');
-        secondWindow.move_resize_frame(false, 80, 620, 400, 300);
-        intelligentWindow.activate(global.get_current_time());
-        await sleep(700);
-        assert(Main.layoutManager.panelBox.translation_y === 39,
-            `Intelligent top bar ignored a covering window because another app had focus: ${
-                (rect => `${rect.x},${rect.y} ${rect.width}x${rect.height}`)(
-                    secondWindow.get_frame_rect())}`);
-        secondWindow.delete(global.get_current_time());
-        await sleep(700);
-        assert(Main.layoutManager.panelBox.translation_y === 0,
-            'Intelligent top bar stayed hidden after the covering window closed');
-
-        interfaceSettings.set_boolean('enable-animations', false);
-        for (let i = 0; i < 20 && St.Settings.get().enable_animations; i++)
-            await sleep(50);
-
-        movePointer(1100, 700);
-        await sleep(750);
-        intelligentWindow.unmaximize(Meta.MaximizeFlags.BOTH);
-        await sleep(500);
-        assert(Main.layoutManager.panelBox.translation_y === 0,
-            'Intelligent top bar did not return after unmaximizing the window');
-        intelligentWindow.delete(global.get_current_time());
-        await sleep(300);
+        // The System card's optional sections, rendered by the production
+        // module itself (imported from the installed extension, so GJS reuses
+        // the class Shell already registered).
+        const forgeDir = Main.extensionManager.lookup('desktop-forge@jrf.local').path;
+        const {SystemWidget} = await import(GLib.filename_to_uri(
+            `${forgeDir}/widgets/system.js`, null));
+        const systemStyle = forge._widgets.find(record => record.entry.type === 'system').widget._style;
+        const detailed = new SystemWidget({id: 'thermal-check', type: 'system', x: 0, y: 0,
+            width: 320, height: 330, options: {show_thermals: true, show_network: true}}, systemStyle);
+        Main.uiGroup.add_child(detailed);
+        detailed.set_position(700, 40);
+        detailed.update({ok: true, data: {...systemData,
+            thermals: {sensors: [
+                {id: 'k10temp:Tctl', kind: 'cpu', label: 'CPU', celsius: 51.2, high: null},
+                {id: 'amdgpu:edge', kind: 'gpu', label: 'GPU', celsius: 97, high: null},
+                {id: 'nvme:Composite', kind: 'disk', label: 'Drive', celsius: 75, high: 82.8},
+                {id: 'iwlwifi_1:temp', kind: 'wifi', label: 'Wi-Fi', celsius: 52, high: null},
+            ]},
+            network: {...systemData.network, state: 'connected', kind: 'wifi', name: 'Home',
+                ssid: 'Home', signal: 65, ipv4: '10.0.0.4', vpn: ['ProtonVPN']}}});
+        await sleep(400);
+        assert(detailed._chips?.size === 3 && detailed._chips.get('k10temp:Tctl').text === '51°C',
+            'The System card did not render its main temperature sensors');
+        assert(detailed._chips.get('amdgpu:edge').has_style_class_name('df-temp-hot') &&
+            detailed._chips.get('nvme:Composite').has_style_class_name('df-temp-warm') &&
+            !detailed._chips.get('k10temp:Tctl').has_style_class_name('df-temp-warm'),
+            'Hot and warm temperatures were not colored');
+        assert(detailed._networkTitle.text === 'Home · 65%' &&
+            detailed._networkDetail.text === '10.0.0.4 · VPN ProtonVPN' &&
+            detailed._networkIcon.icon_name === 'network-vpn-symbolic' &&
+            !detailed._footerParts.network.label.visible,
+            'The System card network section was not rendered');
+        detailed.destroy();
 
         forge.disable();
         assert(forge._windowActors.size === 0 && forge._widgets.length === 0 && !forge._interactionId,
             'Extension teardown retained actors or queued work');
         assert(this._desktopIconMargins === null,
             'Extension teardown retained its Desktop Icons NG margin');
-        assert(Main.layoutManager.panelBox.translation_y === 0 &&
-            JSON.stringify(Main.layoutManager.panelBox.get_position()) === JSON.stringify(originalPanelPosition) &&
-            JSON.stringify(Main.layoutManager.panelBox.get_size()) === JSON.stringify(originalPanelSize),
-            'Extension teardown did not restore the original panel geometry');
+        const stockMonitor = Main.layoutManager.primaryMonitor;
+        const [panelX, panelY] = Main.layoutManager.panelBox.get_position();
+        assert(Main.layoutManager.panelBox.translation_y === 0 && Main.layoutManager.panelBox.visible &&
+            panelX === stockMonitor.x && panelY === stockMonitor.y &&
+            Main.layoutManager.panelBox.width === stockMonitor.width,
+            'Extension teardown did not restore the stock panel geometry');
         forge.enable();
         await sleep(500);
         this._finish({ok: true, metrics, cycles, batteryRect: [bx, by, bw, bh]});

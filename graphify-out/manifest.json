@@ -1,0 +1,1064 @@
+{
+  "bin/desktop-forge": {
+    "mtime": 1788396104.5321305,
+    "seen": 1790804920.4121711,
+    "ast_hash": "13458ffbf790f537fb09cbbb8b791921",
+    "semantic_hash": "13458ffbf790f537fb09cbbb8b791921"
+  },
+  "bin/desktop-forge-clive": {
+    "mtime": 1788743762.008143,
+    "seen": 1790804920.4121816,
+    "ast_hash": "0553511d96ac945d347917d48d2cec20",
+    "semantic_hash": "0553511d96ac945d347917d48d2cec20"
+  },
+  "bin/desktop-forged": {
+    "mtime": 1788396104.5325701,
+    "seen": 1790804920.4121861,
+    "ast_hash": "fd66287d6bdbe05379c94e3ca7cfb545",
+    "semantic_hash": "fd66287d6bdbe05379c94e3ca7cfb545"
+  },
+  "bin/setup-clive": {
+    "mtime": 1788744594.5770037,
+    "seen": 1790804920.4121892,
+    "ast_hash": "3097c487ee53867a49fa78f912688825",
+    "semantic_hash": "3097c487ee53867a49fa78f912688825"
+  },
+  "desktop_forge/__init__.py": {
+    "mtime": 1788393143.94079,
+    "seen": 1790804920.4121923,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "desktop_forge/application.py": {
+    "mtime": 1790650175.3828611,
+    "seen": 1790804920.412195,
+    "ast_hash": "faa9ffc38750ed31c12437863631da26",
+    "semantic_hash": "faa9ffc38750ed31c12437863631da26"
+  },
+  "desktop_forge/backend/__init__.py": {
+    "mtime": 1788394798.5430322,
+    "seen": 1790804920.4121976,
+    "ast_hash": "da5f128f0b77d30719b3cc11ee305c7a",
+    "semantic_hash": "da5f128f0b77d30719b3cc11ee305c7a"
+  },
+  "desktop_forge/backend/app_index.py": {
+    "mtime": 1788393209.6093543,
+    "seen": 1790804920.4122002,
+    "ast_hash": "5e425332b65868535ff4736cbf78e2df",
+    "semantic_hash": "5e425332b65868535ff4736cbf78e2df"
+  },
+  "desktop_forge/backend/desktop_entry.py": {
+    "mtime": 1788393614.8278363,
+    "seen": 1790804920.4122026,
+    "ast_hash": "5fb2266bb34a192fd29d5ebdeb58dac3",
+    "semantic_hash": "5fb2266bb34a192fd29d5ebdeb58dac3"
+  },
+  "desktop_forge/backend/desktop_icons.py": {
+    "mtime": 1789096005.5061824,
+    "seen": 1790804920.4122045,
+    "ast_hash": "237c7657abe918f23c84470b46f122bb",
+    "semantic_hash": "237c7657abe918f23c84470b46f122bb"
+  },
+  "desktop_forge/backend/folder_colors.py": {
+    "mtime": 1788574728.6363838,
+    "seen": 1790804920.412207,
+    "ast_hash": "07c7c5a3c9664e0b87a6c1fb84c3b086",
+    "semantic_hash": "07c7c5a3c9664e0b87a6c1fb84c3b086"
+  },
+  "desktop_forge/backend/icons.py": {
+    "mtime": 1788393253.8584414,
+    "seen": 1790804920.4122097,
+    "ast_hash": "ffbfb934fb09a7d27dc5683abd1c398e",
+    "semantic_hash": "ffbfb934fb09a7d27dc5683abd1c398e"
+  },
+  "desktop_forge/backend/scanner.py": {
+    "mtime": 1788393637.5060313,
+    "seen": 1790804920.4122114,
+    "ast_hash": "3d2ff4c41941ff558dcc1170e4c1ae86",
+    "semantic_hash": "3d2ff4c41941ff558dcc1170e4c1ae86"
+  },
+  "desktop_forge/backend/shell_chrome.py": {
+    "mtime": 1789091988.130556,
+    "seen": 1790804920.4122138,
+    "ast_hash": "fe55c9a233efe3c2fe4c5bc79f09fec6",
+    "semantic_hash": "fe55c9a233efe3c2fe4c5bc79f09fec6"
+  },
+  "desktop_forge/backend/shell_extension.py": {
+    "mtime": 1788398782.5782068,
+    "seen": 1790804920.412216,
+    "ast_hash": "82fca3a857834104051d5282f24609ef",
+    "semantic_hash": "82fca3a857834104051d5282f24609ef"
+  },
+  "desktop_forge/clive/__init__.py": {
+    "mtime": 1788743227.4047205,
+    "seen": 1790804920.412218,
+    "ast_hash": "4dc0fd066997f9a7a7c9c86148061832",
+    "semantic_hash": "4dc0fd066997f9a7a7c9c86148061832"
+  },
+  "desktop_forge/clive/agent.py": {
+    "mtime": 1790663968.8976116,
+    "seen": 1790804920.4122207,
+    "ast_hash": "8f4a338fe9381ddcc315de353a6d7137",
+    "semantic_hash": "8f4a338fe9381ddcc315de353a6d7137"
+  },
+  "desktop_forge/clive/attachments.py": {
+    "mtime": 1790662699.3552382,
+    "seen": 1790804920.4122226,
+    "ast_hash": "997e11502a58b966e9b878e20038513e",
+    "semantic_hash": "997e11502a58b966e9b878e20038513e"
+  },
+  "desktop_forge/clive/client.py": {
+    "mtime": 1790720894.6299734,
+    "seen": 1790804920.4122252,
+    "ast_hash": "4762972c32af64167c4eb0aa97ce1734",
+    "semantic_hash": "4762972c32af64167c4eb0aa97ce1734"
+  },
+  "desktop_forge/clive/desktop.py": {
+    "mtime": 1790660410.8792744,
+    "seen": 1790804920.4122493,
+    "ast_hash": "ef3cc62d626096471e553b5a8946a340",
+    "semantic_hash": "ef3cc62d626096471e553b5a8946a340"
+  },
+  "desktop_forge/clive/extract.py": {
+    "mtime": 1790662857.233879,
+    "seen": 1790804920.4122522,
+    "ast_hash": "3b3645a07d5cfd7c09ed065ea294727f",
+    "semantic_hash": "3b3645a07d5cfd7c09ed065ea294727f"
+  },
+  "desktop_forge/clive/integrations/__init__.py": {
+    "mtime": 1790662286.9187005,
+    "seen": 1790804920.4122548,
+    "ast_hash": "d563f6edb9abc94111782ac13dc5fa62",
+    "semantic_hash": "d563f6edb9abc94111782ac13dc5fa62"
+  },
+  "desktop_forge/clive/integrations/access.py": {
+    "mtime": 1790650349.9133818,
+    "seen": 1790804920.4122581,
+    "ast_hash": "2fd58b960e71492508a8b5c61bdb53bd",
+    "semantic_hash": "2fd58b960e71492508a8b5c61bdb53bd"
+  },
+  "desktop_forge/clive/integrations/apps.py": {
+    "mtime": 1790661755.8161812,
+    "seen": 1790804920.4122605,
+    "ast_hash": "2340263fb6d71f8828fcc6b90d1fa914",
+    "semantic_hash": "2340263fb6d71f8828fcc6b90d1fa914"
+  },
+  "desktop_forge/clive/integrations/base.py": {
+    "mtime": 1790662084.219433,
+    "seen": 1790804920.4122632,
+    "ast_hash": "ed833a89a46e976162c0906cbbc7767b",
+    "semantic_hash": "ed833a89a46e976162c0906cbbc7767b"
+  },
+  "desktop_forge/clive/integrations/calendar.py": {
+    "mtime": 1790662084.2189648,
+    "seen": 1790804920.4122658,
+    "ast_hash": "c59966b8401901c028e9e1cee40b80be",
+    "semantic_hash": "c59966b8401901c028e9e1cee40b80be"
+  },
+  "desktop_forge/clive/integrations/files.py": {
+    "mtime": 1790650454.5794435,
+    "seen": 1790804920.4122684,
+    "ast_hash": "327ce90c34116b39c3f20e3cbe2e0f53",
+    "semantic_hash": "327ce90c34116b39c3f20e3cbe2e0f53"
+  },
+  "desktop_forge/clive/integrations/git.py": {
+    "mtime": 1790663734.2144,
+    "seen": 1790804920.4122708,
+    "ast_hash": "070da86b3a8589ec90cd2b64e06f20f1",
+    "semantic_hash": "070da86b3a8589ec90cd2b64e06f20f1"
+  },
+  "desktop_forge/clive/integrations/mail.py": {
+    "mtime": 1790663757.7605717,
+    "seen": 1790804920.4122734,
+    "ast_hash": "9916d0fe58af04a5232f3f51f5ca1a0e",
+    "semantic_hash": "9916d0fe58af04a5232f3f51f5ca1a0e"
+  },
+  "desktop_forge/clive/integrations/media.py": {
+    "mtime": 1790661953.0322762,
+    "seen": 1790804920.412276,
+    "ast_hash": "8385d5616bd64aacb8bd47af72a0d124",
+    "semantic_hash": "8385d5616bd64aacb8bd47af72a0d124"
+  },
+  "desktop_forge/clive/integrations/notes.py": {
+    "mtime": 1790661962.6615696,
+    "seen": 1790804920.412283,
+    "ast_hash": "3359fa3ec3320ee8155f63fa8cdd2034",
+    "semantic_hash": "3359fa3ec3320ee8155f63fa8cdd2034"
+  },
+  "desktop_forge/clive/integrations/registry.py": {
+    "mtime": 1790661877.6771734,
+    "seen": 1790804920.4122853,
+    "ast_hash": "9881719a3f6d6a919cd6cb066e09fe9a",
+    "semantic_hash": "9881719a3f6d6a919cd6cb066e09fe9a"
+  },
+  "desktop_forge/clive/integrations/schemas.py": {
+    "mtime": 1790650480.5156589,
+    "seen": 1790804920.412288,
+    "ast_hash": "b86c82ced3ccb1cddfda6c97b88acdd8",
+    "semantic_hash": "b86c82ced3ccb1cddfda6c97b88acdd8"
+  },
+  "desktop_forge/clive/integrations/tasks.py": {
+    "mtime": 1790650480.5166588,
+    "seen": 1790804920.41229,
+    "ast_hash": "cca167d3f06e8ffe22e8e338833de3e5",
+    "semantic_hash": "cca167d3f06e8ffe22e8e338833de3e5"
+  },
+  "desktop_forge/clive/integrations/terminal.py": {
+    "mtime": 1790663710.0347042,
+    "seen": 1790804920.4122927,
+    "ast_hash": "2d95d1beeafdaa4491debcd034f98ae3",
+    "semantic_hash": "2d95d1beeafdaa4491debcd034f98ae3"
+  },
+  "desktop_forge/clive/integrations/web.py": {
+    "mtime": 1790650480.5176587,
+    "seen": 1790804920.412295,
+    "ast_hash": "3564ce57482c415fd48d0e830cf60cdd",
+    "semantic_hash": "3564ce57482c415fd48d0e830cf60cdd"
+  },
+  "desktop_forge/clive/models.py": {
+    "mtime": 1790662773.8858726,
+    "seen": 1790804920.4122977,
+    "ast_hash": "4803b5f7c8f7f5d6049a118890598dd8",
+    "semantic_hash": "4803b5f7c8f7f5d6049a118890598dd8"
+  },
+  "desktop_forge/clive/policy.py": {
+    "mtime": 1790661789.8190637,
+    "seen": 1790804920.4123,
+    "ast_hash": "310a362965234ea8c33714cebae2e1d1",
+    "semantic_hash": "310a362965234ea8c33714cebae2e1d1"
+  },
+  "desktop_forge/clive/service.py": {
+    "mtime": 1790721164.4511173,
+    "seen": 1790804920.412302,
+    "ast_hash": "b787e5031b03d72d1769daa10e4f94a4",
+    "semantic_hash": "b787e5031b03d72d1769daa10e4f94a4"
+  },
+  "desktop_forge/clive/settings.py": {
+    "mtime": 1790664199.011414,
+    "seen": 1790804920.4123042,
+    "ast_hash": "cad6c209d2b1a493e6acd09ba7af0a41",
+    "semantic_hash": "cad6c209d2b1a493e6acd09ba7af0a41"
+  },
+  "desktop_forge/clive/shell.py": {
+    "mtime": 1789094716.3501332,
+    "seen": 1790804920.412306,
+    "ast_hash": "7c35676d45fb511e9cc08552adbdd1bc",
+    "semantic_hash": "7c35676d45fb511e9cc08552adbdd1bc"
+  },
+  "desktop_forge/clive/storage.py": {
+    "mtime": 1790662718.3982584,
+    "seen": 1790804920.4123352,
+    "ast_hash": "e7ff271cd5cb8fbda7b999f1b32e7d7c",
+    "semantic_hash": "e7ff271cd5cb8fbda7b999f1b32e7d7c"
+  },
+  "desktop_forge/clive/tools.py": {
+    "mtime": 1790650543.7761836,
+    "seen": 1790804920.412337,
+    "ast_hash": "18d2926fa5f2f453e8ce952515e5f74b",
+    "semantic_hash": "18d2926fa5f2f453e8ce952515e5f74b"
+  },
+  "desktop_forge/config.py": {
+    "mtime": 1790678519.6775417,
+    "seen": 1790804920.4123414,
+    "ast_hash": "e76e46d8514c40f70034e9a831529c69",
+    "semantic_hash": "e76e46d8514c40f70034e9a831529c69"
+  },
+  "desktop_forge/customize/__init__.py": {
+    "mtime": 1790664967.2634196,
+    "seen": 1790804920.4123442,
+    "ast_hash": "6a5fff6d2a504a1d4211e51b5b9914cb",
+    "semantic_hash": "6a5fff6d2a504a1d4211e51b5b9914cb"
+  },
+  "desktop_forge/customize/backends.py": {
+    "mtime": 1790679215.9407105,
+    "seen": 1790804920.412347,
+    "ast_hash": "5674dc31d5494f45ef1e717579ee217e",
+    "semantic_hash": "5674dc31d5494f45ef1e717579ee217e"
+  },
+  "desktop_forge/customize/customizer.py": {
+    "mtime": 1790679659.3848839,
+    "seen": 1790804920.4123502,
+    "ast_hash": "b27063e80f1b3a6071b7fd62bf734478",
+    "semantic_hash": "b27063e80f1b3a6071b7fd62bf734478"
+  },
+  "desktop_forge/customize/presets.py": {
+    "mtime": 1790679659.3838096,
+    "seen": 1790804920.412353,
+    "ast_hash": "1ccd41a41a7f85f93654681ee9239dc4",
+    "semantic_hash": "1ccd41a41a7f85f93654681ee9239dc4"
+  },
+  "desktop_forge/customize/profiles.py": {
+    "mtime": 1790679215.941165,
+    "seen": 1790804920.4123561,
+    "ast_hash": "d6fa4655b043feb517343b8b4c6e4d04",
+    "semantic_hash": "d6fa4655b043feb517343b8b4c6e4d04"
+  },
+  "desktop_forge/customize/registry.py": {
+    "mtime": 1790679659.3832915,
+    "seen": 1790804920.4123588,
+    "ast_hash": "e9694619b919f2cd9eb64b05c11bc9e2",
+    "semantic_hash": "e9694619b919f2cd9eb64b05c11bc9e2"
+  },
+  "desktop_forge/customize/rules.py": {
+    "mtime": 1790666065.6559343,
+    "seen": 1790804920.4123611,
+    "ast_hash": "96e8621bc56d8ec3e38b591830c81090",
+    "semantic_hash": "96e8621bc56d8ec3e38b591830c81090"
+  },
+  "desktop_forge/customize/shortcuts.py": {
+    "mtime": 1790678864.0561419,
+    "seen": 1790804920.4123826,
+    "ast_hash": "daaf562dc81ebb44df7b6e89d9455b4d",
+    "semantic_hash": "daaf562dc81ebb44df7b6e89d9455b4d"
+  },
+  "desktop_forge/customize/slideshow.py": {
+    "mtime": 1790679200.3516314,
+    "seen": 1790804920.412386,
+    "ast_hash": "ccfff02cd5a14c3905ca6beb8f210af3",
+    "semantic_hash": "ccfff02cd5a14c3905ca6beb8f210af3"
+  },
+  "desktop_forge/daemon/__init__.py": {
+    "mtime": 1788393143.95179,
+    "seen": 1790804920.4123886,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "desktop_forge/daemon/service.py": {
+    "mtime": 1790679200.4673386,
+    "seen": 1790804920.4123912,
+    "ast_hash": "f206ac58aa1725573b1945709939712c",
+    "semantic_hash": "f206ac58aa1725573b1945709939712c"
+  },
+  "desktop_forge/main.py": {
+    "mtime": 1788393143.9567902,
+    "seen": 1790804920.412394,
+    "ast_hash": "6492cdf846a390cf2865667910061ae9",
+    "semantic_hash": "6492cdf846a390cf2865667910061ae9"
+  },
+  "desktop_forge/pages/__init__.py": {
+    "mtime": 1788393143.94579,
+    "seen": 1790804920.412397,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "desktop_forge/pages/clive.py": {
+    "mtime": 1790720914.704133,
+    "seen": 1790804920.4123995,
+    "ast_hash": "3bd1871aeebc8410c329a99a66003c13",
+    "semantic_hash": "3bd1871aeebc8410c329a99a66003c13"
+  },
+  "desktop_forge/pages/clive_access.py": {
+    "mtime": 1790662428.3833454,
+    "seen": 1790804920.4124022,
+    "ast_hash": "999126cac2c6c1b932c647382069fea7",
+    "semantic_hash": "999126cac2c6c1b932c647382069fea7"
+  },
+  "desktop_forge/pages/custom_launcher.py": {
+    "mtime": 1788394798.5449839,
+    "seen": 1790804920.4124153,
+    "ast_hash": "8935363903ab20327c283f6c84d94dc0",
+    "semantic_hash": "8935363903ab20327c283f6c84d94dc0"
+  },
+  "desktop_forge/pages/customize/__init__.py": {
+    "mtime": 1790679116.920752,
+    "seen": 1790804920.4124181,
+    "ast_hash": "df7cccdfdccbb4623490acffe22c672e",
+    "semantic_hash": "df7cccdfdccbb4623490acffe22c672e"
+  },
+  "desktop_forge/pages/customize/editors.py": {
+    "mtime": 1790678946.4228294,
+    "seen": 1790804920.4124205,
+    "ast_hash": "379f9ba924011303c8d41d8d505bc2c9",
+    "semantic_hash": "379f9ba924011303c8d41d8d505bc2c9"
+  },
+  "desktop_forge/pages/customize/preview.py": {
+    "mtime": 1790666022.6551957,
+    "seen": 1790804920.412423,
+    "ast_hash": "4e6d4bcf79f0d0c6c873bdecf5235a24",
+    "semantic_hash": "4e6d4bcf79f0d0c6c873bdecf5235a24"
+  },
+  "desktop_forge/pages/customize/profiles_page.py": {
+    "mtime": 1790665708.0172877,
+    "seen": 1790804920.4124255,
+    "ast_hash": "8b9238143d1ab958975be804ed34dca8",
+    "semantic_hash": "8b9238143d1ab958975be804ed34dca8"
+  },
+  "desktop_forge/pages/customize/rows.py": {
+    "mtime": 1790678793.840365,
+    "seen": 1790804920.4124277,
+    "ast_hash": "3dfb49744fe4f6939188508dde39d053",
+    "semantic_hash": "3dfb49744fe4f6939188508dde39d053"
+  },
+  "desktop_forge/pages/customize/shortcuts_page.py": {
+    "mtime": 1790678927.8126137,
+    "seen": 1790804920.4124298,
+    "ast_hash": "0d7c96f1ad99a760ea2c2ed160390eb2",
+    "semantic_hash": "0d7c96f1ad99a760ea2c2ed160390eb2"
+  },
+  "desktop_forge/pages/installed_apps.py": {
+    "mtime": 1788394798.547501,
+    "seen": 1790804920.412432,
+    "ast_hash": "3f2085ff11a1c89e20d5b03f21d569c1",
+    "semantic_hash": "3f2085ff11a1c89e20d5b03f21d569c1"
+  },
+  "desktop_forge/pages/manage.py": {
+    "mtime": 1788394798.546786,
+    "seen": 1790804920.4124336,
+    "ast_hash": "935fa4b5e6faf8197094be96e408d414",
+    "semantic_hash": "935fa4b5e6faf8197094be96e408d414"
+  },
+  "desktop_forge/pages/overall.py": {
+    "mtime": 1790665506.3346407,
+    "seen": 1790804920.4124358,
+    "ast_hash": "5bbd80b6d0a42f136a2d138169849f76",
+    "semantic_hash": "5bbd80b6d0a42f136a2d138169849f76"
+  },
+  "desktop_forge/pages/reminders.py": {
+    "mtime": 1788481034.0108724,
+    "seen": 1790804920.412438,
+    "ast_hash": "b0064fd37bf85d97b7630df7f20a87ed",
+    "semantic_hash": "b0064fd37bf85d97b7630df7f20a87ed"
+  },
+  "desktop_forge/pages/shortcuts.py": {
+    "mtime": 1788495236.657464,
+    "seen": 1790804920.41244,
+    "ast_hash": "5567bb3e0ab74b937081500e369a04f5",
+    "semantic_hash": "5567bb3e0ab74b937081500e369a04f5"
+  },
+  "desktop_forge/pages/widgets.py": {
+    "mtime": 1790650175.383432,
+    "seen": 1790804920.4124424,
+    "ast_hash": "699ee115fb0f69599a7d08be557f3194",
+    "semantic_hash": "699ee115fb0f69599a7d08be557f3194"
+  },
+  "desktop_forge/providers/__init__.py": {
+    "mtime": 1788393143.94879,
+    "seen": 1790804920.4124446,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "desktop_forge/providers/base.py": {
+    "mtime": 1788494935.8271074,
+    "seen": 1790804920.4124467,
+    "ast_hash": "bb5613c9961dc3b0af8c1280a0bccf0e",
+    "semantic_hash": "bb5613c9961dc3b0af8c1280a0bccf0e"
+  },
+  "desktop_forge/providers/calendar.py": {
+    "mtime": 1788495236.6604643,
+    "seen": 1790804920.412449,
+    "ast_hash": "a3751fdae247545004d7dd5072f6da1c",
+    "semantic_hash": "a3751fdae247545004d7dd5072f6da1c"
+  },
+  "desktop_forge/providers/news.py": {
+    "mtime": 1788749726.6572738,
+    "seen": 1790804920.412451,
+    "ast_hash": "cc155ac9175478cdd6fbe8315351507f",
+    "semantic_hash": "cc155ac9175478cdd6fbe8315351507f"
+  },
+  "desktop_forge/providers/reminders.py": {
+    "mtime": 1788393861.5119562,
+    "seen": 1790804920.412453,
+    "ast_hash": "d5d74742097a5d6d742a52e3431aae91",
+    "semantic_hash": "d5d74742097a5d6d742a52e3431aae91"
+  },
+  "desktop_forge/providers/stocks.py": {
+    "mtime": 1788495236.6654642,
+    "seen": 1790804920.4124548,
+    "ast_hash": "04e224b82a5efc19cad1e021a4317745",
+    "semantic_hash": "04e224b82a5efc19cad1e021a4317745"
+  },
+  "desktop_forge/providers/system.py": {
+    "mtime": 1790650175.3844318,
+    "seen": 1790804920.4124572,
+    "ast_hash": "8211dafe385298d4378828b3c6c10239",
+    "semantic_hash": "8211dafe385298d4378828b3c6c10239"
+  },
+  "desktop_forge/providers/thunderbird_calendar.py": {
+    "mtime": 1788528146.4342537,
+    "seen": 1790804920.4124596,
+    "ast_hash": "a42a748b2d507f4cc2834c91d94945f0",
+    "semantic_hash": "a42a748b2d507f4cc2834c91d94945f0"
+  },
+  "desktop_forge/providers/todos.py": {
+    "mtime": 1788528273.7675674,
+    "seen": 1790804920.4124618,
+    "ast_hash": "b9f92ca8bd6193ffefecf2237d2370a0",
+    "semantic_hash": "b9f92ca8bd6193ffefecf2237d2370a0"
+  },
+  "desktop_forge/providers/weather.py": {
+    "mtime": 1788555231.6836765,
+    "seen": 1790804920.412464,
+    "ast_hash": "cc18daa39a67618d5952cd270e8e11f2",
+    "semantic_hash": "cc18daa39a67618d5952cd270e8e11f2"
+  },
+  "desktop_forge/window.py": {
+    "mtime": 1790665578.6469872,
+    "seen": 1790804920.4124658,
+    "ast_hash": "b2fac49bec74b34e96b13be33c8aad48",
+    "semantic_hash": "b2fac49bec74b34e96b13be33c8aad48"
+  },
+  "extension/chromeLogic.js": {
+    "mtime": 1790650175.3844318,
+    "seen": 1790804920.412468,
+    "ast_hash": "845a60655775ac164e1043b8b74f082b",
+    "semantic_hash": "845a60655775ac164e1043b8b74f082b"
+  },
+  "extension/cliveClient.js": {
+    "mtime": 1790663194.550888,
+    "seen": 1790804920.41247,
+    "ast_hash": "9e859949fe3a9b227757cadcbda33294",
+    "semantic_hash": "9e859949fe3a9b227757cadcbda33294"
+  },
+  "extension/cliveLogic.js": {
+    "mtime": 1790663929.975347,
+    "seen": 1790804920.4124722,
+    "ast_hash": "70491e9159efceda085f1355186b51b7",
+    "semantic_hash": "70491e9159efceda085f1355186b51b7"
+  },
+  "extension/desktopBridge.js": {
+    "mtime": 1790678230.0149324,
+    "seen": 1790804920.4124773,
+    "ast_hash": "981ddfc718d284f12786175b94d23d1f",
+    "semantic_hash": "981ddfc718d284f12786175b94d23d1f"
+  },
+  "extension/desktopIconsIntegration.js": {
+    "mtime": 1789100258.8377717,
+    "seen": 1790804920.4124806,
+    "ast_hash": "d2bbe45fe64e0152265b89e31ea42fd5",
+    "semantic_hash": "d2bbe45fe64e0152265b89e31ea42fd5"
+  },
+  "extension/desktopSettings.js": {
+    "mtime": 1790679844.9776907,
+    "seen": 1790804920.412483,
+    "ast_hash": "3a8b3d31817de57517636093b4ce3873",
+    "semantic_hash": "3a8b3d31817de57517636093b4ce3873"
+  },
+  "extension/editMode.js": {
+    "mtime": 1788552752.9056087,
+    "seen": 1790804920.4124858,
+    "ast_hash": "8245294672bb2d12df2ed2da6d2ba3f2",
+    "semantic_hash": "8245294672bb2d12df2ed2da6d2ba3f2"
+  },
+  "extension/extension.js": {
+    "mtime": 1790679116.919997,
+    "seen": 1790804920.4124885,
+    "ast_hash": "afce03c487bff06ab414bf3d1aa7e22d",
+    "semantic_hash": "afce03c487bff06ab414bf3d1aa7e22d"
+  },
+  "extension/features/animations.js": {
+    "mtime": 1790678069.464389,
+    "seen": 1790804920.4125156,
+    "ast_hash": "227eeaaa405aa9e66459a46d086c34e3",
+    "semantic_hash": "227eeaaa405aa9e66459a46d086c34e3"
+  },
+  "extension/features/background.js": {
+    "mtime": 1790677952.7085497,
+    "seen": 1790804920.4125183,
+    "ast_hash": "6e13e4731ecef7ca91c552771add03de",
+    "semantic_hash": "6e13e4731ecef7ca91c552771add03de"
+  },
+  "extension/features/gestures.js": {
+    "mtime": 1790678747.65228,
+    "seen": 1790804920.4125206,
+    "ast_hash": "a6881638f47656b5d63ed180ffe946ee",
+    "semantic_hash": "a6881638f47656b5d63ed180ffe946ee"
+  },
+  "extension/features/keybindings.js": {
+    "mtime": 1790678712.113017,
+    "seen": 1790804920.4125233,
+    "ast_hash": "fde81f99a03298e84621c0bc93c62f28",
+    "semantic_hash": "fde81f99a03298e84621c0bc93c62f28"
+  },
+  "extension/features/notifications.js": {
+    "mtime": 1790677952.7065496,
+    "seen": 1790804920.412526,
+    "ast_hash": "e0ecbceb1c5e09d24fca57e570ec63f8",
+    "semantic_hash": "e0ecbceb1c5e09d24fca57e570ec63f8"
+  },
+  "extension/features/snap.js": {
+    "mtime": 1790678623.254742,
+    "seen": 1790804920.4125292,
+    "ast_hash": "8a440224dbb68138fe39a04488fbc424",
+    "semantic_hash": "8a440224dbb68138fe39a04488fbc424"
+  },
+  "extension/features/tiling.js": {
+    "mtime": 1790679683.58544,
+    "seen": 1790804920.4125366,
+    "ast_hash": "3708f6b9409e60c10edfb1cd0ec63738",
+    "semantic_hash": "3708f6b9409e60c10edfb1cd0ec63738"
+  },
+  "extension/features/topBar.js": {
+    "mtime": 1790679696.712459,
+    "seen": 1790804920.4125395,
+    "ast_hash": "bb904b5d94a7c44a18eee26330cb5284",
+    "semantic_hash": "bb904b5d94a7c44a18eee26330cb5284"
+  },
+  "extension/features/windowEffects.js": {
+    "mtime": 1790678442.6021922,
+    "seen": 1790804920.4125416,
+    "ast_hash": "0d9e4aca41421f882c7f0ea6af4b72a6",
+    "semantic_hash": "0d9e4aca41421f882c7f0ea6af4b72a6"
+  },
+  "extension/features/windowRules.js": {
+    "mtime": 1790678205.8775082,
+    "seen": 1790804920.412544,
+    "ast_hash": "a0d171032b9e59beca760301f4fa6328",
+    "semantic_hash": "a0d171032b9e59beca760301f4fa6328"
+  },
+  "extension/features/workspaces.js": {
+    "mtime": 1790679116.9000137,
+    "seen": 1790804920.4125462,
+    "ast_hash": "fdc4ab8e843ef87ce006c7b0323b133c",
+    "semantic_hash": "fdc4ab8e843ef87ce006c7b0323b133c"
+  },
+  "extension/geometry.js": {
+    "mtime": 1788536694.601681,
+    "seen": 1790804920.412548,
+    "ast_hash": "333b5e166853bef9f9c643af80ceab41",
+    "semantic_hash": "333b5e166853bef9f9c643af80ceab41"
+  },
+  "extension/layoutLogic.js": {
+    "mtime": 1790679098.6008782,
+    "seen": 1790804920.4125502,
+    "ast_hash": "17b84f1cbe1331b505d50f54cbef4a66",
+    "semantic_hash": "17b84f1cbe1331b505d50f54cbef4a66"
+  },
+  "extension/metadata.json": {
+    "mtime": 1790678505.0829983,
+    "seen": 1790804920.412552,
+    "ast_hash": "33031fa6642792fba90695b078985a2a",
+    "semantic_hash": "33031fa6642792fba90695b078985a2a"
+  },
+  "extension/panelController.js": {
+    "mtime": 1790678519.6956544,
+    "seen": 1790804920.4125543,
+    "ast_hash": "76e1f694d50587386ec4962cda268eb5",
+    "semantic_hash": "76e1f694d50587386ec4962cda268eb5"
+  },
+  "extension/prefs.js": {
+    "mtime": 1789095360.2304187,
+    "seen": 1790804920.4125562,
+    "ast_hash": "ac37aa11b5081b0aa73ad4e0091201fd",
+    "semantic_hash": "ac37aa11b5081b0aa73ad4e0091201fd"
+  },
+  "extension/rulesLogic.js": {
+    "mtime": 1790678089.7895353,
+    "seen": 1790804920.4125583,
+    "ast_hash": "ba4d8314ef01a660c768461742430de8",
+    "semantic_hash": "ba4d8314ef01a660c768461742430de8"
+  },
+  "extension/store.js": {
+    "mtime": 1788749658.5924702,
+    "seen": 1790804920.4125605,
+    "ast_hash": "9224b13c2ef537d77436266e95f2b7e2",
+    "semantic_hash": "9224b13c2ef537d77436266e95f2b7e2"
+  },
+  "extension/themeLogic.js": {
+    "mtime": 1788538612.1688743,
+    "seen": 1790804920.4125628,
+    "ast_hash": "305079b652f9dbc6db03601f2cd28b31",
+    "semantic_hash": "305079b652f9dbc6db03601f2cd28b31"
+  },
+  "extension/tilingLogic.js": {
+    "mtime": 1790678587.7861156,
+    "seen": 1790804920.412565,
+    "ast_hash": "72a6eef5b48c4a49bc764332d2288e6b",
+    "semantic_hash": "72a6eef5b48c4a49bc764332d2288e6b"
+  },
+  "extension/widgetBackground.js": {
+    "mtime": 1788562833.0796015,
+    "seen": 1790804920.4125671,
+    "ast_hash": "7663ff080b969fb833b7060cc7bad64d",
+    "semantic_hash": "7663ff080b969fb833b7060cc7bad64d"
+  },
+  "extension/widgetLogic.js": {
+    "mtime": 1790663513.0122561,
+    "seen": 1790804920.4125695,
+    "ast_hash": "0be9da1ab50aca9f80cece3ce7f5149c",
+    "semantic_hash": "0be9da1ab50aca9f80cece3ce7f5149c"
+  },
+  "extension/widgets/base.js": {
+    "mtime": 1790650175.3854318,
+    "seen": 1790804920.4125714,
+    "ast_hash": "8dd67e71371cb6b708ed355572289ea2",
+    "semantic_hash": "8dd67e71371cb6b708ed355572289ea2"
+  },
+  "extension/widgets/calendar.js": {
+    "mtime": 1788531949.7948,
+    "seen": 1790804920.4125738,
+    "ast_hash": "6712494207eb2f613407c023c06a8eb5",
+    "semantic_hash": "6712494207eb2f613407c023c06a8eb5"
+  },
+  "extension/widgets/clive.js": {
+    "mtime": 1790663968.8999288,
+    "seen": 1790804920.4125757,
+    "ast_hash": "9a8d751dd21dcf46c120f4f54c616b6c",
+    "semantic_hash": "9a8d751dd21dcf46c120f4f54c616b6c"
+  },
+  "extension/widgets/clock.js": {
+    "mtime": 1788537433.576093,
+    "seen": 1790804920.412578,
+    "ast_hash": "5e598ab213109715a8a033df4725a4b1",
+    "semantic_hash": "5e598ab213109715a8a033df4725a4b1"
+  },
+  "extension/widgets/headlineTicker.js": {
+    "mtime": 1788562562.2755635,
+    "seen": 1790804920.41258,
+    "ast_hash": "1108ba5280c857a6b9a1fd04b0c7c1bd",
+    "semantic_hash": "1108ba5280c857a6b9a1fd04b0c7c1bd"
+  },
+  "extension/widgets/news.js": {
+    "mtime": 1788748801.611574,
+    "seen": 1790804920.4125822,
+    "ast_hash": "03d38cdaa3611f3f2ff6c31426e495a7",
+    "semantic_hash": "03d38cdaa3611f3f2ff6c31426e495a7"
+  },
+  "extension/widgets/pager.js": {
+    "mtime": 1788533430.1886075,
+    "seen": 1790804920.4125845,
+    "ast_hash": "3f468210f300ef1ea6b3f48b0bb168d0",
+    "semantic_hash": "3f468210f300ef1ea6b3f48b0bb168d0"
+  },
+  "extension/widgets/reminderDialog.js": {
+    "mtime": 1788537027.0161152,
+    "seen": 1790804920.4125865,
+    "ast_hash": "a81bf823541319b4ade44688a2807ce1",
+    "semantic_hash": "a81bf823541319b4ade44688a2807ce1"
+  },
+  "extension/widgets/reminders.js": {
+    "mtime": 1788552753.352612,
+    "seen": 1790804920.4125886,
+    "ast_hash": "b8c5461c2e0b24f4d0ee5ed793c0ce73",
+    "semantic_hash": "b8c5461c2e0b24f4d0ee5ed793c0ce73"
+  },
+  "extension/widgets/scrollable.js": {
+    "mtime": 1788577862.2643263,
+    "seen": 1790804920.4125912,
+    "ast_hash": "8c4dc72017e7b95dbe3a9f9b209b91c1",
+    "semantic_hash": "8c4dc72017e7b95dbe3a9f9b209b91c1"
+  },
+  "extension/widgets/scrollbar.js": {
+    "mtime": 1788578302.7880256,
+    "seen": 1790804920.4125993,
+    "ast_hash": "b0ebc034178c0541d5b045b2c25f15f9",
+    "semantic_hash": "b0ebc034178c0541d5b045b2c25f15f9"
+  },
+  "extension/widgets/stocks.js": {
+    "mtime": 1788572131.8413007,
+    "seen": 1790804920.4126024,
+    "ast_hash": "19694e5b62d0f82f91d4b03ff22dd707",
+    "semantic_hash": "19694e5b62d0f82f91d4b03ff22dd707"
+  },
+  "extension/widgets/system.js": {
+    "mtime": 1790650175.3854318,
+    "seen": 1790804920.4126048,
+    "ast_hash": "00a53278a4557a306701288d40d34319",
+    "semantic_hash": "00a53278a4557a306701288d40d34319"
+  },
+  "extension/widgets/todoDialog.js": {
+    "mtime": 1788537027.5251188,
+    "seen": 1790804920.4126074,
+    "ast_hash": "7c4e968df71d1e3f0d9d13e703640aff",
+    "semantic_hash": "7c4e968df71d1e3f0d9d13e703640aff"
+  },
+  "extension/widgets/todos.js": {
+    "mtime": 1788577862.472328,
+    "seen": 1790804920.41261,
+    "ast_hash": "9d9192b0582ff575a668feae9b6be610",
+    "semantic_hash": "9d9192b0582ff575a668feae9b6be610"
+  },
+  "extension/widgets/weather.js": {
+    "mtime": 1788555317.000585,
+    "seen": 1790804920.412613,
+    "ast_hash": "860b74044b590e1e6c8c251eb0e8afb7",
+    "semantic_hash": "860b74044b590e1e6c8c251eb0e8afb7"
+  },
+  "extension/windowInfo.js": {
+    "mtime": 1790678089.7905352,
+    "seen": 1790804920.4126155,
+    "ast_hash": "cf1088e34544a7d895520f0896745216",
+    "semantic_hash": "cf1088e34544a7d895520f0896745216"
+  },
+  "install.sh": {
+    "mtime": 1790719673.8048754,
+    "seen": 1790804920.4126177,
+    "ast_hash": "8fec485812b5099e00f96002d4b027ff",
+    "semantic_hash": "8fec485812b5099e00f96002d4b027ff"
+  },
+  "tests/__init__.py": {
+    "mtime": 1788495346.5256934,
+    "seen": 1790804920.4126403,
+    "ast_hash": "054e6cd985c67c1a324bcf32b1277de1",
+    "semantic_hash": "054e6cd985c67c1a324bcf32b1277de1"
+  },
+  "tests/check_shell_smoke.py": {
+    "mtime": 1788572311.3964844,
+    "seen": 1790804920.412644,
+    "ast_hash": "b1b97a1b1406e46a3b7b974e93df329c",
+    "semantic_hash": "b1b97a1b1406e46a3b7b974e93df329c"
+  },
+  "tests/chrome_defaults_dump.js": {
+    "mtime": 1790646376.0992656,
+    "seen": 1790804920.4126468,
+    "ast_hash": "a87fdc0053410cbb4dd8e418ce8a3fe4",
+    "semantic_hash": "a87fdc0053410cbb4dd8e418ce8a3fe4"
+  },
+  "tests/clive_desktop_smoke.py": {
+    "mtime": 1788744899.391513,
+    "seen": 1790804920.412649,
+    "ast_hash": "404f9405c498c6eb6ba9d95df20750ac",
+    "semantic_hash": "404f9405c498c6eb6ba9d95df20750ac"
+  },
+  "tests/clive_shell_smoke.py": {
+    "mtime": 1789095404.9081254,
+    "seen": 1790804920.4126515,
+    "ast_hash": "7a7609e67cd490d3f16d2c809d7df69d",
+    "semantic_hash": "7a7609e67cd490d3f16d2c809d7df69d"
+  },
+  "tests/clive_ui_smoke.py": {
+    "mtime": 1790720909.3398383,
+    "seen": 1790804920.412654,
+    "ast_hash": "3777be9344dac797ef9084538858346e",
+    "semantic_hash": "3777be9344dac797ef9084538858346e"
+  },
+  "tests/customize_ui_smoke.py": {
+    "mtime": 1790678966.9041405,
+    "seen": 1790804920.4126565,
+    "ast_hash": "88b21b0a41715f0406db97135c2bc524",
+    "semantic_hash": "88b21b0a41715f0406db97135c2bc524"
+  },
+  "tests/extension_store_test.js": {
+    "mtime": 1788749726.3424234,
+    "seen": 1790804920.412659,
+    "ast_hash": "40cb87b29e9881ae11107104d0d36a9b",
+    "semantic_hash": "40cb87b29e9881ae11107104d0d36a9b"
+  },
+  "tests/extension_widget_logic_test.js": {
+    "mtime": 1790679098.6178784,
+    "seen": 1790804920.412661,
+    "ast_hash": "6bc71d4fd99cb4a55bcfc4f51953807f",
+    "semantic_hash": "6bc71d4fd99cb4a55bcfc4f51953807f"
+  },
+  "tests/folder_colors_ui_smoke.py": {
+    "mtime": 1790665602.5931942,
+    "seen": 1790804920.412663,
+    "ast_hash": "25dc1308d7c2ae0e16f732087b867fa1",
+    "semantic_hash": "25dc1308d7c2ae0e16f732087b867fa1"
+  },
+  "tests/news_settings_ui_smoke.py": {
+    "mtime": 1788748929.1752028,
+    "seen": 1790804920.4126654,
+    "ast_hash": "ba3bdbb89eded4fe8ae09b9acd87e0cd",
+    "semantic_hash": "ba3bdbb89eded4fe8ae09b9acd87e0cd"
+  },
+  "tests/news_signature_test.js": {
+    "mtime": 1788748466.1268375,
+    "seen": 1790804920.4126673,
+    "ast_hash": "22b232521c1b222a548193847e8a6bdd",
+    "semantic_hash": "22b232521c1b222a548193847e8a6bdd"
+  },
+  "tests/rules_fixtures.json": {
+    "mtime": 1790666092.7385838,
+    "seen": 1790804920.4126697,
+    "ast_hash": "5f61e2ca59b43088ee3dfc4885384503",
+    "semantic_hash": "5f61e2ca59b43088ee3dfc4885384503"
+  },
+  "tests/run_shell_smoke.sh": {
+    "mtime": 1790679732.9368396,
+    "seen": 1790804920.4126718,
+    "ast_hash": "234386b2723477d1c24a47303cdbd639",
+    "semantic_hash": "234386b2723477d1c24a47303cdbd639"
+  },
+  "tests/shell-smoke/config.json": {
+    "mtime": 1788573995.433163,
+    "seen": 1790804920.4126737,
+    "ast_hash": "983ffde9f143baca1f832278941eddda",
+    "semantic_hash": "983ffde9f143baca1f832278941eddda"
+  },
+  "tests/shell-smoke/extension.js": {
+    "mtime": 1790678312.8435006,
+    "seen": 1790804920.412676,
+    "ast_hash": "1151b3aede3d34fd85d1b2036ca8d0d6",
+    "semantic_hash": "1151b3aede3d34fd85d1b2036ca8d0d6"
+  },
+  "tests/shell-smoke/featureChecks.js": {
+    "mtime": 1790679770.1257308,
+    "seen": 1790804920.4126782,
+    "ast_hash": "dcfd665d39025d3a5a9645b19f43eeea",
+    "semantic_hash": "dcfd665d39025d3a5a9645b19f43eeea"
+  },
+  "tests/shell-smoke/metadata.json": {
+    "mtime": 1790650175.3874319,
+    "seen": 1790804920.4126801,
+    "ast_hash": "9763c5428cfbaa02b7d2b932ce042b51",
+    "semantic_hash": "9763c5428cfbaa02b7d2b932ce042b51"
+  },
+  "tests/shell-smoke/topBarChecks.js": {
+    "mtime": 1790648272.6985602,
+    "seen": 1790804920.4126823,
+    "ast_hash": "0d0620902922696c68991a02df9050ae",
+    "semantic_hash": "0d0620902922696c68991a02df9050ae"
+  },
+  "tests/shell-smoke/window.py": {
+    "mtime": 1789615708.9322944,
+    "seen": 1790804920.4126844,
+    "ast_hash": "9016c33d1000215544b23105aa905ab6",
+    "semantic_hash": "9016c33d1000215544b23105aa905ab6"
+  },
+  "tests/test_clive.py": {
+    "mtime": 1790662834.0821652,
+    "seen": 1790804920.4126866,
+    "ast_hash": "56aba6b3c727613ec3478ba87df0147f",
+    "semantic_hash": "56aba6b3c727613ec3478ba87df0147f"
+  },
+  "tests/test_clive_access.py": {
+    "mtime": 1790664243.5242317,
+    "seen": 1790804920.4126887,
+    "ast_hash": "d8a1d3ba50d199e9bf6c961b4f906997",
+    "semantic_hash": "d8a1d3ba50d199e9bf6c961b4f906997"
+  },
+  "tests/test_clive_attachments.py": {
+    "mtime": 1790662857.23436,
+    "seen": 1790804920.412691,
+    "ast_hash": "ae916760220baf2ec55f68600a1ab367",
+    "semantic_hash": "ae916760220baf2ec55f68600a1ab367"
+  },
+  "tests/test_clive_desktop.py": {
+    "mtime": 1790660456.7537317,
+    "seen": 1790804920.4126935,
+    "ast_hash": "ff9fac37dbc2edc25d5b9fb08f8096c7",
+    "semantic_hash": "ff9fac37dbc2edc25d5b9fb08f8096c7"
+  },
+  "tests/test_clive_integrations.py": {
+    "mtime": 1790663734.214923,
+    "seen": 1790804920.412696,
+    "ast_hash": "4be5d74b55d0fd3891b21aa0dfc6c83c",
+    "semantic_hash": "4be5d74b55d0fd3891b21aa0dfc6c83c"
+  },
+  "tests/test_clive_settings.py": {
+    "mtime": 1790650175.388658,
+    "seen": 1790804920.412698,
+    "ast_hash": "2d5f745b379ffc78c073b50deab4b9ed",
+    "semantic_hash": "2d5f745b379ffc78c073b50deab4b9ed"
+  },
+  "tests/test_clive_shell.py": {
+    "mtime": 1789094980.5559113,
+    "seen": 1790804920.4127004,
+    "ast_hash": "e8c493f74fba065fbe3c8c3724f9ee9a",
+    "semantic_hash": "e8c493f74fba065fbe3c8c3724f9ee9a"
+  },
+  "tests/test_clive_transport.py": {
+    "mtime": 1790721169.9111605,
+    "seen": 1790804920.412703,
+    "ast_hash": "08770bd0e432464c3f8e4bc582aa1705",
+    "semantic_hash": "08770bd0e432464c3f8e4bc582aa1705"
+  },
+  "tests/test_config.py": {
+    "mtime": 1790650175.388658,
+    "seen": 1790804920.4127054,
+    "ast_hash": "09af22ed78b1cd31bebcdc56f11e21c6",
+    "semantic_hash": "09af22ed78b1cd31bebcdc56f11e21c6"
+  },
+  "tests/test_customize.py": {
+    "mtime": 1790679659.3860073,
+    "seen": 1790804920.4127083,
+    "ast_hash": "75cbe9aa4e2c29808b08c79c0dc35869",
+    "semantic_hash": "75cbe9aa4e2c29808b08c79c0dc35869"
+  },
+  "tests/test_desktop_icons.py": {
+    "mtime": 1789096005.5101826,
+    "seen": 1790804920.412711,
+    "ast_hash": "2c65265ec32f6447ff8a2b4818598c63",
+    "semantic_hash": "2c65265ec32f6447ff8a2b4818598c63"
+  },
+  "tests/test_extension_store.py": {
+    "mtime": 1788528422.6611037,
+    "seen": 1790804920.4127138,
+    "ast_hash": "8f37f756929fd9151e02dfe84a5d3c9c",
+    "semantic_hash": "8f37f756929fd9151e02dfe84a5d3c9c"
+  },
+  "tests/test_extension_widget_logic.py": {
+    "mtime": 1788535073.2396646,
+    "seen": 1790804920.4127164,
+    "ast_hash": "11c224ca15111372e0d85deef5c6fca3",
+    "semantic_hash": "11c224ca15111372e0d85deef5c6fca3"
+  },
+  "tests/test_folder_colors.py": {
+    "mtime": 1788574027.038472,
+    "seen": 1790804920.412719,
+    "ast_hash": "50a8363c626ee5125cbc956d5ed22d1f",
+    "semantic_hash": "50a8363c626ee5125cbc956d5ed22d1f"
+  },
+  "tests/test_news.py": {
+    "mtime": 1788749660.098818,
+    "seen": 1790804920.4127216,
+    "ast_hash": "ba52a8dc1d6d40e4e7d0f1954725a5e0",
+    "semantic_hash": "ba52a8dc1d6d40e4e7d0f1954725a5e0"
+  },
+  "tests/test_news_settings.py": {
+    "mtime": 1788748521.170804,
+    "seen": 1790804920.412746,
+    "ast_hash": "52a00ea40477497e10ccd63af214f5fb",
+    "semantic_hash": "52a00ea40477497e10ccd63af214f5fb"
+  },
+  "tests/test_shell_chrome.py": {
+    "mtime": 1789091518.6906674,
+    "seen": 1790804920.412749,
+    "ast_hash": "616593abaf10288ac548d5c3e27206d0",
+    "semantic_hash": "616593abaf10288ac548d5c3e27206d0"
+  },
+  "tests/test_system_provider.py": {
+    "mtime": 1790649103.135262,
+    "seen": 1790804920.4127522,
+    "ast_hash": "afe7f1fa00696b0a83d7ac6dd128fedf",
+    "semantic_hash": "afe7f1fa00696b0a83d7ac6dd128fedf"
+  },
+  "tests/test_thunderbird_calendar.py": {
+    "mtime": 1788528274.2795727,
+    "seen": 1790804920.4127607,
+    "ast_hash": "53e42efd74f18a28b0347152d87cbe8b",
+    "semantic_hash": "53e42efd74f18a28b0347152d87cbe8b"
+  },
+  "tests/test_todos.py": {
+    "mtime": 1788528274.01957,
+    "seen": 1790804920.412763,
+    "ast_hash": "a9b7e6cf2474c078241218877de05cb5",
+    "semantic_hash": "a9b7e6cf2474c078241218877de05cb5"
+  },
+  "tests/test_weather.py": {
+    "mtime": 1788555417.3477948,
+    "seen": 1790804920.4127698,
+    "ast_hash": "4a65219acd50ee51f0b75a7ebc2e63ed",
+    "semantic_hash": "4a65219acd50ee51f0b75a7ebc2e63ed"
+  },
+  "README.md": {
+    "mtime": 1790720867.2407558,
+    "seen": 1790804920.4127722,
+    "ast_hash": "f0a820f1554466bb00a9212ecaf1d3ee",
+    "semantic_hash": "f0a820f1554466bb00a9212ecaf1d3ee"
+  },
+  "requirements-clive.txt": {
+    "mtime": 1788743379.2349653,
+    "seen": 1790804920.412774,
+    "ast_hash": "d0e10956b3b2d2ea49d3f8463e4c4205",
+    "semantic_hash": "d0e10956b3b2d2ea49d3f8463e4c4205"
+  },
+  "desktop_forge/assets/folder.svg": {
+    "mtime": 1788573765.3719146,
+    "seen": 1790804920.4127765,
+    "ast_hash": "a4ca98b7879c26e565a283e692437414",
+    "semantic_hash": "a4ca98b7879c26e565a283e692437414"
+  },
+  "packaging/icons/org.jrf.DesktopForge.svg": {
+    "mtime": 1788394406.2716675,
+    "seen": 1790804920.4127789,
+    "ast_hash": "091c08b1a13cc5054d1166dc451cdec3",
+    "semantic_hash": "091c08b1a13cc5054d1166dc451cdec3"
+  },
+  "tests/shell-smoke/wallpaper.svg": {
+    "mtime": 1788562806.1433988,
+    "seen": 1790804920.4127808,
+    "ast_hash": "4cbc65234da0de592d78c56779adbd51",
+    "semantic_hash": "4cbc65234da0de592d78c56779adbd51"
+  }
+}

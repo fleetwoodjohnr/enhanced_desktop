@@ -1,0 +1,22 @@
+[
+  {"name": "app id", "rule": {"match": {"app": "firefox.desktop"}},
+   "window": {"desktop_id": "firefox.desktop", "title": "Mozilla Firefox", "type": "normal"}, "matches": true},
+  {"name": "app id without suffix", "rule": {"match": {"app": "org.gnome.Calculator"}},
+   "window": {"desktop_id": "org.gnome.Calculator.desktop", "type": "normal"}, "matches": true},
+  {"name": "other app", "rule": {"match": {"app": "firefox.desktop"}},
+   "window": {"desktop_id": "org.gnome.Nautilus.desktop", "type": "normal"}, "matches": false},
+  {"name": "class matches instance", "rule": {"match": {"wm_class": "steam"}},
+   "window": {"desktop_id": "steam.desktop", "wm_class": "Steam", "wm_class_instance": "steam"}, "matches": true},
+  {"name": "title contains ignores case", "rule": {"match": {"title": "picture-in-picture"}},
+   "window": {"desktop_id": "firefox.desktop", "title": "Picture-in-Picture", "type": "normal"}, "matches": true},
+  {"name": "title pattern", "rule": {"match": {"title": "^Steam( - News)?$", "title_regex": true}},
+   "window": {"desktop_id": "steam.desktop", "title": "Steam - News", "type": "normal"}, "matches": true},
+  {"name": "title pattern is case sensitive", "rule": {"match": {"title": "^steam$", "title_regex": true}},
+   "window": {"desktop_id": "steam.desktop", "title": "Steam", "type": "normal"}, "matches": false},
+  {"name": "dialogs only", "rule": {"match": {"app": "org.gnome.TextEditor", "type": "dialog"}},
+   "window": {"desktop_id": "org.gnome.TextEditor.desktop", "title": "Save As", "type": "dialog"}, "matches": true},
+  {"name": "normal only skips dialogs", "rule": {"match": {"app": "org.gnome.TextEditor", "type": "normal"}},
+   "window": {"desktop_id": "org.gnome.TextEditor.desktop", "title": "Save As", "type": "dialog"}, "matches": false},
+  {"name": "every condition must hold", "rule": {"match": {"app": "firefox.desktop", "title": "YouTube"}},
+   "window": {"desktop_id": "firefox.desktop", "title": "Mozilla Firefox", "type": "normal"}, "matches": false}
+]

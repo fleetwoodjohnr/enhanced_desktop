@@ -2,9 +2,18 @@
 
 export const MIN_WIDTH = 160;
 export const MIN_HEIGHT = 90;
-export const GRID_SIZE = 8;
+// Grid and magnet distance are live: Customize → Desktop & Widgets sets them
+// through setLayoutTuning(), and importers see the new values (ES module
+// exports are bindings, not copies).
+export let GRID_SIZE = 8;
 export const WIDGET_GAP = 8;
-export const SNAP_DISTANCE = 12;
+export let SNAP_DISTANCE = 12;
+
+/** Apply the widget grid and magnet distance from desktop.json. */
+export function setLayoutTuning({grid = 8, snap_distance: snap = 12} = {}) {
+    GRID_SIZE = Number.isFinite(grid) ? Math.max(4, Math.min(32, Math.round(grid))) : 8;
+    SNAP_DISTANCE = Number.isFinite(snap) ? Math.max(0, Math.min(48, Math.round(snap))) : 12;
+}
 
 function clamp(value, minimum, maximum) {
     return Math.max(minimum, Math.min(value, maximum));

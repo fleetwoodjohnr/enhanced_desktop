@@ -2,5 +2,11 @@
   "uuid": "desktop-forge-smoke@jrf.local",
   "name": "Desktop Forge isolated rendering tests",
   "description": "Used only by tests/run_shell_smoke.sh",
-  "shell-version": ["50"]
+  "shell-version": [
+    "50"
+  ],
+  "session-modes": [
+    "user",
+    "unlock-dialog"
+  ]
 }

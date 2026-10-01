@@ -163,3 +163,80 @@ class ModelTestTests(unittest.TestCase):
         message, probes = self.validate(show)
         self.assertIn("does not report tool calling", message)
         self.assertEqual(probes, [])
+
+
+@unittest.skipUnless(httpx, "Install optional CLIVE dependencies")
+class AvailableModelsTests(unittest.TestCase):
+    """What the Cloud model and Local model dropdowns are offered."""
+
+    def setUp(self):
+        import os
+        import tempfile
+        from desktop_forge.clive import service
+        self.service = service
+        self.requests = []
+        self.store = self.enterContext(tempfile.TemporaryDirectory())
+        # An empty model folder unless a test downloads something into it.
+        self.enterContext(patch.dict(os.environ, {"OLLAMA_MODELS": self.store}))
+
+    def listing(self, endpoint, names, key=""):
+        def tags(request):
+            self.requests.append(request)
+            return httpx.Response(200, json={"models": [{"name": name} for name in names]})
+        client = httpx.Client
+        transport = httpx.MockTransport(tags)
+        with patch("httpx.Client", side_effect=lambda **kw: client(transport=transport, **kw)), \
+                patch.object(self.service, "get_key", lambda: key):
+            return self.service.available_models(endpoint)
+
+    def download(self, *names):
+        from pathlib import Path
+        for name in names:
+            model, tag = name.split(":")
+            manifest = Path(self.store, "manifests", "registry.ollama.ai", "library", model, tag)
+            manifest.parent.mkdir(parents=True, exist_ok=True)
+            manifest.write_text("{}")
+
+    def test_local_list_leaves_out_cloud_proxies(self):
+        names = self.listing("local", ["qwen3.5:9b", "gpt-oss:120b-cloud", "qwen3.5:4b"])
+        self.assertEqual(names, ["qwen3.5:4b", "qwen3.5:9b"])
+        self.assertEqual(self.requests[0].url.host, "127.0.0.1")
+
+    def test_cloud_catalog_is_listed_without_a_key(self):
+        names = self.listing("cloud", ["gpt-oss:120b", "gemma4:31b"])
+        self.assertEqual(names, ["gemma4:31b", "gpt-oss:120b"])
+        self.assertEqual(self.requests[0].url.host, "ollama.com")
+        self.assertNotIn("authorization", self.requests[0].headers)
+
+    def test_cloud_catalog_sends_the_key_when_there_is_one(self):
+        self.listing("cloud", ["gemma4:31b"], key="test-secret")
+        self.assertEqual(self.requests[0].headers["authorization"], "Bearer test-secret")
+
+    def test_a_locked_keyring_still_lists_the_cloud_catalog(self):
+        def locked():
+            raise RuntimeError("GNOME Keyring is locked or unavailable.")
+        client = httpx.Client
+        transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"models": [{"name": "gemma4:31b"}]}))
+        with patch("httpx.Client", side_effect=lambda **kw: client(transport=transport, **kw)), \
+                patch.object(self.service, "get_key", locked):
+            self.assertEqual(self.service.available_models("cloud"), ["gemma4:31b"])
+
+    def test_downloaded_models_hidden_by_another_server_are_explained(self):
+        self.download("qwen3.5:4b", "smollm2:1.7b")
+        with self.assertRaises(ValueError) as caught:
+            self.listing("local", [])
+        message = str(caught.exception)
+        self.assertIn("none of the 2 models", message)
+        self.assertIn("qwen3.5:4b", message)
+        self.assertIn("systemctl disable --now ollama.service", message)
+
+    def test_downloaded_models_the_server_lists_are_not_an_error(self):
+        self.download("qwen3.5:4b")
+        self.assertEqual(self.listing("local", ["qwen3.5:4b"]), ["qwen3.5:4b"])
+
+    def test_nothing_downloaded_is_an_empty_list_not_an_error(self):
+        self.assertEqual(self.listing("local", []), [])
+
+    def test_a_store_of_only_cloud_proxies_is_not_mistaken_for_another_server(self):
+        self.download("gpt-oss:120b-cloud")
+        self.assertEqual(self.listing("local", ["gpt-oss:120b-cloud"]), [])

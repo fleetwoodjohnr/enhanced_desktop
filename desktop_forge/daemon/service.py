@@ -91,6 +91,7 @@ class Daemon:
         self._reminders_monitor: Gio.FileMonitor | None = None
         self._todos_monitor: Gio.FileMonitor | None = None
         self._bus: Gio.DBusConnection | None = None
+        self._slideshow = None
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -265,7 +266,22 @@ class Daemon:
                 self._next_run[name] = time.monotonic() + interval
 
         self._fire_due_reminders()
+        self._advance_slideshow()
         return GLib.SOURCE_CONTINUE
+
+    def _advance_slideshow(self) -> None:
+        """Customize → Wallpaper's slideshow; it checks every few seconds
+        whether the picture is due and does nothing when switched off."""
+        try:
+            if self._slideshow is None:
+                from ..customize.slideshow import Slideshow
+                self._slideshow = Slideshow()
+            changed = self._slideshow.tick()
+        except Exception as exc:  # noqa: BLE001 - the slideshow must never stop the service
+            log(f"wallpaper slideshow: {exc}")
+            return
+        if changed:
+            log(f"wallpaper slideshow: {changed}")
 
     def _poll(self, name: str, provider: Provider, options: dict[str, Any]) -> None:
         if name == "news" and self._last_good.get(name, {}).get("request_signature") != news_request_signature(options):

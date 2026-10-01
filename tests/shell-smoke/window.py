@@ -20,6 +20,9 @@ def activate(application):
     window.set_default_size(320, 300)
     entry = Gtk.Entry()
     entry.set_placeholder_text("Typing repaint test")
+    if name == "wide":
+        # Wider than a tile, as KeePassXC's minimum is.
+        entry.set_size_request(700, -1)
     window.set_child(entry)
     window.present()
     counter = 0

@@ -5,6 +5,7 @@ import json
 import os
 import threading
 import time
+from pathlib import Path
 
 import gi
 gi.require_version("Gio", "2.0")
@@ -12,9 +13,11 @@ from gi.repository import Gio, GLib
 
 from .. import config
 from .agent import Agent
+from .integrations import ACCESS_PATH
 from .models import safe_message
-from .settings import (BUS_NAME, DATA_PATH, INTERFACE, OBJECT_PATH, get_key,
-                       key_state, load_settings, save_settings, set_key)
+from .settings import (BUS_NAME, DATA_PATH, INTERFACE, OBJECT_PATH, edit_saved_models,
+                       get_key, key_state, load_settings, save_settings, select_model,
+                       selection, set_key, valid_model_name)
 
 XML = f"""<node><interface name="{INTERFACE}">
   <method name="Call"><arg name="request" type="s" direction="in"/>
@@ -31,15 +34,89 @@ class Service:
         os.environ["LANGCHAIN_TRACING_V2"] = "false"
         self.loop = GLib.MainLoop()
         self.bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-        self.agent = Agent(DATA_PATH, self.publish)
+        self.agent = Agent(DATA_PATH, self.publish, access_path=ACCESS_PATH,
+                           key_state=lambda: self.has_key)
         self.pending = None
         self.pending_lock = threading.Lock()
         self.setup_lock = threading.Lock()
+        self.pull_lock = threading.Lock()
         self.source = 0
+        # Checked once and after every key change, not per published state:
+        # asking the keyring is a D-Bus round trip, and a locked one may
+        # prompt. None means "not known yet".
+        self.has_key = None
+        self.pull = None
+        self.followups = None
+        self.followup_running = False
         info = Gio.DBusNodeInfo.new_for_xml(XML)
         self.registration = self.bus.register_object(OBJECT_PATH, info.interfaces[0], self._call, None, None)
         self.owner = Gio.bus_own_name_on_connection(self.bus, BUS_NAME, Gio.BusNameOwnerFlags.NONE, None, self._lost)
         self.publish(self.agent.snapshot())
+        # Off the main loop, after the name is owned: D-Bus activation at login
+        # must not wait on a keyring that is still locked.
+        threading.Thread(target=self._learn_key_state, daemon=True, name="clive-keyring").start()
+
+    def _learn_key_state(self):
+        self.has_key = key_state()["has_key"]
+        self._prune()
+        self.republish()
+        GLib.timeout_add_seconds(PRUNE_SECONDS, self._prune_tick)
+        GLib.timeout_add_seconds(FOLLOWUP_TICK_SECONDS, self._followup_tick)
+
+    def _prune(self):
+        """Apply Memory's history retention; a no-op while it keeps everything."""
+        try:
+            if self.agent.prune(load_settings()["history_days"]):
+                self.republish()
+        except Exception:  # noqa: BLE001 - retention must never take the service down
+            pass
+
+    def _followup_tick(self):
+        settings = load_settings()
+        hours = settings["followup_hours"]
+        due = hours and time.time() - (self.followups or {}).get("checked", 0) >= hours * 3600
+        if due and not self.followup_running:
+            self.followup_running = True
+            threading.Thread(target=self._check_followups, args=(settings["followup_days"],),
+                             daemon=True, name="clive-followups").start()
+        return GLib.SOURCE_CONTINUE
+
+    def _check_followups(self, days):
+        """Look for emails that may need a reply, through App Access like any tool call.
+
+        Only headers are read, and only from accounts whose follow-up tracking
+        is switched on; nothing is sent to a model. The result is a count the
+        desktop turns into a notification.
+        """
+        from .integrations import AccessDisabled
+        from .tools import TOOLS
+        registry = self.agent.registry
+        found = []
+        try:
+            for integration in registry.integrations():
+                if integration.instance_of != "mail":
+                    continue
+                arguments = {"account": integration.id, "days": days}
+                try:
+                    registry.check("mail_followups", arguments)
+                except AccessDisabled:
+                    continue
+                try:
+                    result = TOOLS["mail_followups"].handler(None, arguments)
+                except Exception:  # noqa: BLE001 - an unreachable server is tried next time
+                    continue
+                self.agent.history.record_usage(integration.id, "Checking for follow-ups")
+                found.append({"account": integration.id, "name": integration.name,
+                              "count": len(result.get("waiting_on_you", []))})
+            self.followups = {"checked": time.time(), "accounts": found,
+                              "count": sum(a["count"] for a in found)}
+            self.republish()
+        finally:
+            self.followup_running = False
+
+    def _prune_tick(self):
+        threading.Thread(target=self._prune, daemon=True, name="clive-prune").start()
+        return GLib.SOURCE_CONTINUE
 
     def _lost(self, *_args):
         self.loop.quit()
@@ -54,8 +131,34 @@ class Service:
         with self.pending_lock:
             state, self.pending, self.source = self.pending, None, 0
         if state is not None:
-            self.bus.emit_signal(None, OBJECT_PATH, INTERFACE, "Changed", GLib.Variant("(s)", (json.dumps(state),)))
+            self.bus.emit_signal(None, OBJECT_PATH, INTERFACE, "Changed",
+                                 GLib.Variant("(s)", (json.dumps(self.decorate(state)),)))
         return GLib.SOURCE_REMOVE
+
+    def decorate(self, state):
+        """The public state: the task, trimmed, plus the model and App Access summary."""
+        try:
+            chosen = selection(load_settings(), self.has_key)
+        except Exception:  # noqa: BLE001 - a broken settings file must not stop updates
+            chosen = None
+        try:
+            access = self.agent.registry.summary()
+        except Exception:  # noqa: BLE001
+            access = None
+        try:
+            stored = load_settings()
+            preferences = {key: stored[key] for key in PUBLIC_PREFERENCES}
+        except Exception:  # noqa: BLE001
+            preferences = None
+        try:
+            draft = self.agent.draft_public()
+        except Exception:  # noqa: BLE001
+            draft = []
+        return {**public_state(state), "selection": chosen, "pull": self.pull, "access": access,
+                "preferences": preferences, "draft": draft, "followups": self.followups}
+
+    def republish(self):
+        self.publish(self.agent.snapshot())
 
     def _call(self, _connection, _sender, _path, _interface, _method, params, invocation):
         raw = params.unpack()[0]
@@ -80,7 +183,11 @@ class Service:
 
     def dispatch(self, r):
         # A setup probe must not compete with an active task or a second probe.
-        if r.get("op") in ("submit", "configure", "validate", "check_key"):
+        # A message only has to wait for a probe; two messages sent close
+        # together are the agent's business ("finish the current task first").
+        if r.get("op") == "submit" and self.setup_lock.locked():
+            raise ValueError("A model test is running. Wait for it to finish, then send your message.")
+        if r.get("op") in ("configure", "validate", "check_key"):
             if not self.setup_lock.acquire(blocking=False):
                 raise ValueError("Model setup is in progress. Wait for the test to finish.")
             try:
@@ -92,14 +199,30 @@ class Service:
     def _dispatch(self, r):
         op = r.get("op")
         if op == "state":
-            return self.agent.snapshot()
+            return self.decorate(self.agent.snapshot())
+        if op in MODEL_OPS:
+            result = self._models(op, r)
+            self.republish()
+            return result
+        if op in ACCESS_OPS:
+            result = self._access(op, r)
+            self.republish()
+            return result
         if op == "submit":
             # Only paths cross the bus; the service reads the files itself, so a
             # large attachment never has to fit inside a D-Bus request.
             return self.agent.submit(r.get("message", ""), r.get("conversation", ""),
-                                     r.get("attachments", []))
+                                     r.get("attachments", []), bool(r.get("use_draft")))
+        if op == "draft_add":
+            return self.agent.draft_add(r.get("paths"))
+        if op == "draft_remove":
+            return self.agent.draft_remove(r.get("id", ""))
+        if op == "draft_clear":
+            return self.agent.draft_clear()
         if op == "approve":
             self.agent.approve(r.get("id"), r.get("version"))
+        elif op == "confirm":
+            self.agent.confirm(r.get("id"), r.get("approved"))
         elif op == "cancel":
             self.agent.cancel()
         elif op == "history":
@@ -133,16 +256,123 @@ class Service:
                     errors.update(field_errors)
             else:
                 settings = load_settings()
-            return {**settings, **key_state(), "errors": errors}
+            keys = key_state()
+            self.has_key = keys["has_key"]
+            self.republish()
+            return {**settings, **keys, "errors": errors}
         elif op == "validate":
             if self.agent.busy():
                 raise ValueError("Finish or cancel the current task before testing models")
             return validate_models()
         elif op == "check_key":
-            return check_key()
+            result = check_key()
+            self.has_key = key_state()["has_key"]
+            self.republish()
+            return result
         else:
             raise ValueError("Unknown CLIVE operation")
-        return self.agent.snapshot()
+        return self.decorate(self.agent.snapshot())
+
+    def _access(self, op, r):
+        registry = self.agent.registry
+        if op == "access":
+            return registry.describe(self.agent.history.usage())
+        if op == "access_set":
+            if not isinstance(r.get("id"), str):
+                raise ValueError("Choose an app")
+            registry.set(r["id"], r.get("enabled"), r.get("capabilities"), r.get("confirm"))
+            return registry.describe(self.agent.history.usage())
+        if op == "access_bulk":
+            ids = r.get("ids")
+            if ids is not None and not isinstance(ids, list):
+                raise ValueError("Choose the apps to change")
+            registry.set_many(r.get("enabled"), ids)
+            return registry.describe(self.agent.history.usage())
+        if op == "access_pause":
+            paused = r.get("paused")
+            registry.pause(paused)
+            # Pausing is the emergency stop: nothing already under way runs on.
+            if paused is True and self.agent.busy():
+                self.agent.cancel()
+            return registry.summary()
+        if op == "action_detail":
+            detail = self.agent.history.call_result(r.get("call") or "")
+            if detail is None:
+                raise ValueError("That action is no longer in the history")
+            return detail
+        if op == "integration_option":
+            if not isinstance(r.get("id"), str) or not isinstance(r.get("key"), str):
+                raise ValueError("Choose an app setting")
+            registry.set_option(r["id"], r["key"], r.get("value"))
+            return registry.describe(self.agent.history.usage())
+        if op == "goa_accounts":
+            from .integrations import mail
+            connected = {a.get("goa_id") for a in mail.load_accounts()}
+            return {"accounts": [a for a in mail.goa_mail_accounts() if a["goa_id"] not in connected]}
+        if op == "mail_account_add":
+            from .integrations import mail
+            request = r.get("account")
+            if not isinstance(request, dict):
+                raise ValueError("Choose an account to connect")
+            account = mail.add_account(request)
+            # Connecting an account is the user's explicit choice to use it.
+            registry.set(mail.PREFIX + account["id"], enabled=True)
+            return registry.describe(self.agent.history.usage())
+        if op == "mail_account_remove":
+            from .integrations import mail
+            if not isinstance(r.get("id"), str) or not r["id"].startswith(mail.PREFIX):
+                raise ValueError("Choose an email account")
+            mail.remove_account(r["id"].removeprefix(mail.PREFIX))
+            return registry.describe(self.agent.history.usage())
+        if op == "access_check":
+            return check_integration(registry, r.get("id"))
+        if op == "usage_clear":
+            self.agent.history.clear_usage()
+            return registry.describe({})
+        raise ValueError("Unknown CLIVE operation")
+
+    def _models(self, op, r):
+        endpoint = r.get("endpoint")
+        model = r.get("model")
+        if model is not None and not isinstance(model, str):
+            raise ValueError("Enter a model name")
+        if op == "models":
+            return selection(load_settings(), self.has_key)
+        if op == "model_select":
+            return selection(select_model(endpoint, model, has_key=self.has_key is not False),
+                             self.has_key)
+        if op in ("model_add", "model_remove"):
+            if not model or not valid_model_name(model.strip(), local=endpoint == "local"):
+                raise ValueError("Enter a valid Ollama model name")
+            return selection(edit_saved_models(endpoint, model, op == "model_add"), self.has_key)
+        if op == "models_available":
+            return {"endpoint": endpoint, "models": available_models(endpoint)}
+        if op == "model_pull":
+            if not model or not valid_model_name(model.strip(), local=True):
+                raise ValueError("Enter the name of a model to download, such as qwen3.5:4b")
+            self._start_pull(model.strip())
+            return {"started": model.strip()}
+        raise ValueError("Unknown CLIVE operation")
+
+    def _start_pull(self, model):
+        if not self.pull_lock.acquire(blocking=False):
+            raise ValueError("A model download is already running")
+
+        def work():
+            try:
+                for progress in pull_model(model):
+                    self.pull = progress
+                    self.republish()
+                self.pull = {"model": model, "status": "done"}
+                edit_saved_models("local", model, True)
+            except Exception as exc:  # noqa: BLE001 - reported to the user, never raised
+                self.pull = {"model": model, "status": "failed",
+                             "error": safe_message(exc, "The download did not finish.")}
+            finally:
+                self.pull_lock.release()
+                self.republish()
+
+        threading.Thread(target=work, daemon=True, name="clive-pull").start()
 
     def stop(self):
         self.agent.close()
@@ -153,6 +383,165 @@ class Service:
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, 15, self.stop)
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, 2, self.stop)
         self.loop.run()
+
+
+# Settings the card and the extension act on themselves.
+PUBLIC_PREFERENCES = ("card_density", "show_action_details", "notify_finished", "notify_waiting",
+                      "followup_hours")
+PRUNE_SECONDS = 6 * 3600
+FOLLOWUP_TICK_SECONDS = 15 * 60
+ACCESS_OPS = ("access", "access_set", "access_bulk", "access_pause", "action_detail", "usage_clear",
+              "integration_option", "goa_accounts", "mail_account_add", "mail_account_remove",
+              "access_check")
+# What a published action result may carry before it is cut to a preview. The
+# full result stays in CLIVE's own journal (action_detail); Shell does not need
+# an email body streamed into it with every state update.
+PUBLIC_RESULT_LIMIT = 2000
+
+
+def _trim(value):
+    if isinstance(value, str):
+        return value if len(value) <= PUBLIC_RESULT_LIMIT else value[:PUBLIC_RESULT_LIMIT] + "…"
+    if isinstance(value, dict):
+        return {key: _trim(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_trim(item) for item in value[:50]]
+    return value
+
+
+def public_state(state: dict) -> dict:
+    actions = state.get("actions")
+    confirmation = state.get("confirmation")
+    if not actions and not confirmation:
+        return state
+    trimmed = []
+    for action in actions or []:
+        text = json.dumps(action.get("result"), ensure_ascii=False)
+        if len(text) > PUBLIC_RESULT_LIMIT:
+            action = {**action, "result": None, "preview": text[:PUBLIC_RESULT_LIMIT], "truncated": True}
+        trimmed.append(action)
+    return {**state, "actions": trimmed, "confirmation": _trim(confirmation) if confirmation else confirmation}
+
+
+MODEL_OPS = ("models", "model_select", "model_add", "model_remove",
+             "models_available", "model_pull")
+LOCAL_BASE = "http://127.0.0.1:11434"
+CLOUD_BASE = "https://ollama.com"
+
+
+def check_integration(registry, integration_id) -> dict:
+    """A live check, for the App Access Check button: can CLIVE reach it now?"""
+    integration = registry.get(integration_id) if isinstance(integration_id, str) else None
+    if integration is None:
+        raise ValueError("Choose an app")
+    if integration.instance_of == "mail":
+        from .integrations import mail
+        try:
+            with mail.Mailbox(mail.account_for(integration.id)) as box:
+                folders = len(box.roles)
+            return {"state": "ready", "detail": f"Connected; {folders} special folders found"}
+        except Exception as exc:  # noqa: BLE001 - the user needs the reason, not a traceback
+            return {"state": "unavailable",
+                    "detail": safe_message(exc, "Could not sign in to the mail server. Check the "
+                                                "account and your internet connection.")}
+    try:
+        return integration.status()
+    except Exception:  # noqa: BLE001
+        return {"state": "unavailable", "detail": "Could not check this app"}
+
+
+def downloaded_models() -> list[str]:
+    """Model names pulled into this user's Ollama store, read from disk.
+
+    Only used to explain an empty answer from the server: a different Ollama
+    (the system-wide ollama.service, say) can hold the port while serving a
+    store of its own.
+    """
+    root = Path(os.environ.get("OLLAMA_MODELS") or Path.home() / ".ollama" / "models") / "manifests"
+    names = []
+    try:
+        for manifest in root.glob("*/*/*/*"):
+            host, namespace, name, tag = manifest.relative_to(root).parts
+            if not manifest.is_file():
+                continue
+            if host == "registry.ollama.ai":
+                names.append(f"{name}:{tag}" if namespace == "library" else f"{namespace}/{name}:{tag}")
+            else:
+                names.append(f"{host}/{namespace}/{name}:{tag}")
+    except OSError:
+        return []
+    return sorted(names)
+
+
+def available_models(endpoint) -> list[str]:
+    """Names Ollama can serve right now: installed locally, or in the cloud catalog."""
+    import httpx
+    if endpoint not in ("cloud", "local"):
+        raise ValueError("Choose the cloud or the local model")
+    headers = {}
+    if endpoint == "cloud":
+        # The catalog is public; a key is sent when there is one, and a locked
+        # keyring only means asking without it.
+        try:
+            key = get_key()
+        except RuntimeError:
+            key = ""
+        if key:
+            headers["Authorization"] = f"Bearer {key}"
+    try:
+        with httpx.Client(timeout=httpx.Timeout(15, connect=5), follow_redirects=False) as client:
+            response = client.get((LOCAL_BASE if endpoint == "local" else CLOUD_BASE) + "/api/tags",
+                                  headers=headers)
+    except Exception:
+        # httpx errors carry the URL and headers; say what the user can do.
+        raise ValueError("The local Ollama service is not running." if endpoint == "local"
+                         else "Could not reach Ollama Cloud.") from None
+    if response.status_code != 200:
+        raise ValueError(f"Ollama returned HTTP {response.status_code} for the model list.")
+    try:
+        names = [item.get("name") or item.get("model") for item in response.json().get("models", [])]
+    except (ValueError, AttributeError):
+        raise ValueError("Ollama returned an unreadable model list.") from None
+    local = endpoint == "local"
+    names = {name for name in names if isinstance(name, str)}
+    if local:
+        # Compared before filtering: a store holding only "-cloud" models is
+        # served correctly, even though none of them is offered below.
+        downloaded = downloaded_models()
+        if downloaded and not set(downloaded) & names:
+            shown = ", ".join(downloaded[:4]) + (", …" if len(downloaded) > 4 else "")
+            raise ValueError(
+                f"Ollama reports none of the {len(downloaded)} models downloaded in your model "
+                f"folder ({shown}). Another Ollama server, such as the system-wide "
+                "ollama.service, is probably using port 11434. Run "
+                "`sudo systemctl disable --now ollama.service`, then "
+                "`systemctl --user restart desktop-forge-ollama`.")
+    # A local "-cloud" model is a proxy to Ollama's servers; it is never offered
+    # as the local model, which must keep everything on this machine.
+    return sorted(name for name in names if valid_model_name(name, local))
+
+
+def pull_model(model):
+    """Download a local model, yielding progress the UI can show."""
+    import httpx
+    with httpx.Client(timeout=httpx.Timeout(3600, connect=10)) as client:
+        with client.stream("POST", LOCAL_BASE + "/api/pull",
+                           json={"model": model, "stream": True}) as response:
+            if response.status_code != 200:
+                raise ValueError(f"Ollama could not download {model} (HTTP {response.status_code}).")
+            last = 0.0
+            for line in response.iter_lines():
+                if not line:
+                    continue
+                item = json.loads(line)
+                if item.get("error"):
+                    raise ValueError(f"Ollama could not download {model}.")
+                now = time.monotonic()
+                # One update a second is plenty for a progress bar.
+                if now - last >= 1 or item.get("status") == "success":
+                    last = now
+                    yield {"model": model, "status": item.get("status", ""),
+                           "completed": item.get("completed"), "total": item.get("total")}
 
 
 def validate_models():

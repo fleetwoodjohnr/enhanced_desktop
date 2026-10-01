@@ -5,20 +5,37 @@ import Meta from 'gi://Meta';
 import St from 'gi://St';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as MessageTray from 'resource:///org/gnome/shell/ui/messageTray.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 import {EditMode} from './editMode.js';
 import {DesktopBridge} from './desktopBridge.js';
+import {DesktopSettings} from './desktopSettings.js';
+import {WindowAnimations} from './features/animations.js';
+import {BackgroundEffects} from './features/background.js';
+import {Gestures} from './features/gestures.js';
+import {Keybindings} from './features/keybindings.js';
+import {NotificationStyle} from './features/notifications.js';
+import {Scratchpad} from './features/scratchpad.js';
+import {Snapping} from './features/snap.js';
+import {Tiling} from './features/tiling.js';
+import {TopBarExtras} from './features/topBar.js';
+import {WindowEffects} from './features/windowEffects.js';
+import {WindowRules} from './features/windowRules.js';
+import {WidgetGrid, WorkspaceWrap} from './features/workspaces.js';
 import {PanelController} from './panelController.js';
 import {
     MIN_HEIGHT, MIN_WIDTH, clampPosition, monitorForEntry, settlePosition,
     workAreaForEntry,
 } from './geometry.js';
 import {CONFIG_PATH, STATE_DIR, isOwnWrite, readJson, watchJson, writeJson} from './store.js';
+import {TerminalHost} from './terminalHost.js';
 import {systemIsDark} from './themeLogic.js';
 import {newsOptions, rectanglesOverlap, widgetLayer} from './widgetLogic.js';
 
+import {DesktopWidget} from './widgets/base.js';
 import {CalendarWidget} from './widgets/calendar.js';
 import {ClockWidget} from './widgets/clock.js';
 import {NewsWidget} from './widgets/news.js';
@@ -29,6 +46,7 @@ import {TodosWidget} from './widgets/todos.js';
 import {WeatherWidget} from './widgets/weather.js';
 import {CliveWidget} from './widgets/clive.js';
 import {CliveClient} from './cliveClient.js';
+import {ACTIVE_STATUSES} from './cliveLogic.js';
 
 const WIDGET_CLASSES = {
     clive: CliveWidget,
@@ -40,6 +58,8 @@ const WIDGET_CLASSES = {
     reminders: RemindersWidget,
     todos: TodosWidget,
     system: SystemWidget,
+    // An empty card: the terminal window (terminalHost.js) sits over it.
+    terminal: DesktopWidget,
 };
 
 /** Which provider each widget type renders. Mirrors config.WIDGET_TYPES. */
@@ -53,6 +73,7 @@ const WIDGET_PROVIDER = {
     reminders: 'reminders',
     todos: 'todos',
     system: 'system',
+    terminal: null,
 };
 
 const DEFAULT_STYLE = {
@@ -89,6 +110,7 @@ const WIDGET_ACCENTS = {
     todos: '#5e5ce6',
     news: '#af52de',
     system: '#30d158',
+    terminal: '#64d2ff',
 };
 
 // Long enough to coalesce a burst of writes from the settings app, short
@@ -98,6 +120,86 @@ const SAVE_DELAY_MS = 300;
 
 export default class DesktopForgeExtension extends Extension {
     enable() {
+        this._sessionActive = false;
+        this._sessionStartId = 0;
+        this._wasLocked = false;
+        this._disabling = false;
+        this._interfaceSettings = new Gio.Settings({
+            schema_id: 'org.gnome.desktop.interface',
+        });
+        // The panel controller outlives the lock screen (metadata lists the
+        // unlock-dialog session mode): tearing it down at every lock would
+        // toggle the bar's strut and resize every window behind the shield.
+        this._panelController = new PanelController(this.uuid);
+        // Also outlives the lock screen, so the shells in the terminal
+        // widgets keep running behind it. Created before the feature modules
+        // so it claims its windows before they see them.
+        this._terminals = new TerminalHost(id => this._terminalStatus(id));
+        this._interfaceSettings.connectObject(
+            'changed::color-scheme', () => {
+                this._syncShellTheme();
+                if (!this._sessionActive)
+                    return;
+                if (this._editMode)
+                    this._rebuildPending = true;
+                else
+                    this._scheduleRebuild();
+            }, this);
+        this._syncShellTheme();
+        Main.sessionMode.connectObject('updated', () => this._syncSessionMode(), this);
+        this._syncSessionMode();
+    }
+
+    disable() {
+        Main.sessionMode.disconnectObject(this);
+        this._cancelSessionStart();
+        this._stopSession();
+        this._interfaceSettings?.disconnectObject(this);
+        this._interfaceSettings = null;
+        this._clearShellTheme();
+        this._terminals?.destroy();
+        this._terminals = null;
+        this._panelController?.destroy();
+        this._panelController = null;
+    }
+
+    /**
+     * Everything but the panel controller runs only in the user session.
+     *
+     * The lock screen gets no desktop cards, no CLIVE, no edit mode and no
+     * D-Bus bridge: nothing interactive or personal belongs on it.
+     */
+    _syncSessionMode() {
+        const locked = !!Main.sessionMode.isLocked;
+        this._panelController?.setLocked(locked);
+        this._cancelSessionStart();
+        if (locked) {
+            this._stopSession();
+        } else if (this._wasLocked) {
+            // Shell is still leaving the lock screen when it emits 'updated';
+            // cards built now join a stage that has not been laid out yet.
+            this._sessionStartId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                this._sessionStartId = 0;
+                this._startSession();
+                return GLib.SOURCE_REMOVE;
+            });
+        } else {
+            this._startSession();
+        }
+        this._wasLocked = locked;
+    }
+
+    _cancelSessionStart() {
+        if (this._sessionStartId) {
+            GLib.source_remove(this._sessionStartId);
+            this._sessionStartId = 0;
+        }
+    }
+
+    _startSession() {
+        if (this._sessionActive)
+            return;
+        this._sessionActive = true;
         this._clive = null;
         this._clivePanel = null;
         this._widgets = [];
@@ -113,21 +215,13 @@ export default class DesktopForgeExtension extends Extension {
         this._interactionId = 0;
         this._windowActors = new Map();
         this._pendingWindows = new Set();
-        this._interfaceSettings = new Gio.Settings({
-            schema_id: 'org.gnome.desktop.interface',
-        });
-        this._panelController = new PanelController(this.uuid);
-        this._desktopBridge = new DesktopBridge();
-        this._interfaceSettings.connectObject(
-            'changed::color-scheme', () => {
-                this._syncShellTheme();
-                if (this._editMode)
-                    this._rebuildPending = true;
-                else
-                    this._scheduleRebuild();
-            }, this);
-
-        this._syncShellTheme();
+        this._desktopSettings = new DesktopSettings(this._featureSpecs());
+        this._desktopBridge = new DesktopBridge(() => ({
+            version: this.metadata.version,
+            modules: this._featureSpecs().map(spec => spec.name),
+            active: this._desktopSettings?.active ?? [],
+            failed: this._desktopSettings?.failed ?? [],
+        }));
 
         this._watchConfig();
         this._setupInteractionTracking();
@@ -140,10 +234,13 @@ export default class DesktopForgeExtension extends Extension {
             'monitors-changed', () => this._positionAll(), this);
     }
 
-    disable() {
+    _stopSession() {
+        if (!this._sessionActive)
+            return;
+        this._sessionActive = false;
         // Set before anything else: closing edit mode calls back into
         // _onEditDone(), which would otherwise schedule a rebuild that fires
-        // after the extension is gone.
+        // after the session is gone.
         this._disabling = true;
         Main.layoutManager.disconnectObject(this);
         global.display.disconnectObject(this);
@@ -177,13 +274,10 @@ export default class DesktopForgeExtension extends Extension {
             this._interactionId = 0;
         }
 
-        this._interfaceSettings?.disconnectObject(this);
-        this._interfaceSettings = null;
-        this._clearShellTheme();
-        this._panelController?.destroy();
-        this._panelController = null;
         this._desktopBridge?.destroy();
         this._desktopBridge = null;
+        this._desktopSettings?.destroy();
+        this._desktopSettings = null;
 
         this._configMonitor?.cancel();
         this._configMonitor = null;
@@ -194,10 +288,54 @@ export default class DesktopForgeExtension extends Extension {
 
         this._destroyWidgets();
         this._cliveUnsubscribe?.();
+        this._cliveUnsubscribe = null;
+        this._cliveSource?.destroy();
+        this._cliveSource = null;
+        this._cliveLastStatus = null;
+        this._cliveFollowupsSeen = undefined;
         this._clivePanel?.destroy();
         this._clivePanel = null;
         this._clive?.destroy();
         this._clive = null;
+    }
+
+    /**
+     * The customization modules, each fed its groups of desktop.json. They
+     * exist only in the user session: none of them runs on the lock screen.
+     */
+    _featureSpecs() {
+        return [
+            {name: 'notifications', groups: ['notifications'], create: () => new NotificationStyle()},
+            {name: 'background', groups: ['wallpaper'], create: () => new BackgroundEffects()},
+            {name: 'top-bar', groups: ['top_bar'], create: () => new TopBarExtras(this._panelController)},
+            {name: 'animations', groups: ['animations'], create: () => new WindowAnimations()},
+            {name: 'window-effects', groups: ['windows', 'rules'], create: () => new WindowEffects()},
+            {name: 'window-rules', groups: ['rules'], create: () => new WindowRules()},
+            {name: 'workspaces', groups: ['workspaces'], create: () => new WorkspaceWrap()},
+            {name: 'widget-grid', groups: ['desktop'], create: () => new WidgetGrid()},
+            {name: 'tiling', groups: ['tiling', 'rules'], create: () => new Tiling()},
+            // Snapping takes every window tiling leaves free: floated, Focus
+            // View and a window alone in its group.
+            {name: 'snap', groups: ['snap', 'tiling'], create: () => new Snapping(window => {
+                const tiling = this._desktopSettings?.module('tiling');
+                return !!tiling?.tiles(window) && !tiling.alone(window);
+            })},
+            {name: 'scratchpad', groups: [], create: () => new Scratchpad()},
+            {name: 'gestures', groups: ['gestures'], create: () => new Gestures(this._featureContext())},
+            {name: 'keybindings', groups: [], create: () =>
+                new Keybindings(this.getSettings(), this._featureContext())},
+        ];
+    }
+
+    /** What shortcuts and gestures act on. */
+    _featureContext() {
+        return {
+            tiling: () => this._desktopSettings?.module('tiling') ?? null,
+            snap: () => this._desktopSettings?.module('snap') ?? null,
+            scratchpad: () => this._desktopSettings?.module('scratchpad') ?? null,
+            panel: () => this._panelController,
+            openClive: () => this._clive?.open(),
+        };
     }
 
     // -- construction ------------------------------------------------------
@@ -205,6 +343,7 @@ export default class DesktopForgeExtension extends Extension {
     _build() {
         const config = readJson(CONFIG_PATH) ?? {widgets: [], style: {}};
         this._fingerprint = widgetFingerprint(config);
+        this._builtConfig = config;
         this._chromeFingerprint = chromeFingerprint(config);
         this._syncShellTheme(config);
         const baseStyle = resolveStyle(config.style ?? {}, this._interfaceSettings);
@@ -242,6 +381,15 @@ export default class DesktopForgeExtension extends Extension {
             const provider = WIDGET_PROVIDER[entry.type];
             if (provider)
                 this._watchState(provider);
+        }
+
+        this._terminals.sync((config.widgets ?? [])
+            .filter(entry => entry.type === 'terminal' && entry.enabled !== false)
+            .map(entry => ({id: entry.id,
+                theme: entry.style?.theme_mode ?? config.style?.theme_mode ?? 'system'})));
+        for (const {widget, entry} of this._widgets) {
+            if (entry.type === 'terminal')
+                this._terminals.bindWidget(entry.id, widget);
         }
 
         this._positionAll();
@@ -312,14 +460,117 @@ export default class DesktopForgeExtension extends Extension {
         const approve = this._clivePanel.menu.addAction('Approve task', () => this._clive.call(
             'approve', {id: this._clive.state?.id, version: this._clive.state?.version}));
         approve.setSensitive(false);
+        // A confirmation is read before it is answered, so this opens CLIVE,
+        // where the card lists exactly what will happen.
+        const review = this._clivePanel.menu.addAction('Review action waiting for you…',
+            () => this._clive.open());
+        review.visible = false;
         this._clivePanel.menu.addAction('Stop task', () => this._clive.call('cancel'));
+        this._clivePanel.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        // The emergency stop for App Access, reachable even when every window
+        // covers the card: nothing runs until access is resumed.
+        const pause = this._clivePanel.menu.addAction('Pause all app access', () =>
+            this._clive.call('access_pause', {paused: !this._clive.state?.access?.paused}));
+        // The quickest way between the cloud and local model, and the only
+        // one left while a window covers the card.
+        const switchModel = this._clivePanel.menu.addAction('Switch model', () => {
+            const endpoint = this._clive.state?.selection?.endpoint === 'cloud' ? 'local' : 'cloud';
+            this._clive.call('model_select', {endpoint});
+        });
         Main.panel.addToStatusArea('desktop-forge-clive', this._clivePanel);
         this._cliveUnsubscribe = this._clive.subscribe(state => {
             const waiting = state.status === 'awaiting_approval';
-            const busy = ['planning', 'running', 'awaiting_approval'].includes(state.status);
+            const confirming = state.status === 'awaiting_confirmation';
+            const busy = ACTIVE_STATUSES.includes(state.status);
             approve.setSensitive(waiting);
-            indicator.text = waiting ? 'CLIVE · approve' : busy ? 'CLIVE · working' : 'CLIVE';
+            review.visible = confirming;
+            indicator.text = waiting ? 'CLIVE · approve' : confirming ? 'CLIVE · confirm'
+                : busy ? 'CLIVE · working' : 'CLIVE';
+            const paused = !!state.access?.paused;
+            pause.label.text = paused ? 'Resume app access' : 'Pause all app access';
+            this._cliveNotifyTransition(state);
+            this._cliveNotifyFollowups(state);
+            const chosen = state.selection;
+            const onCloud = chosen?.endpoint === 'cloud';
+            switchModel.label.text = !chosen ? 'Switch model'
+                : onCloud ? `Use local model (${chosen.local_model})`
+                    : `Use cloud model (${chosen.cloud_model})`;
+            switchModel.setSensitive(!!chosen && (onCloud || !!chosen.cloud_ready));
         });
+    }
+
+    /**
+     * Tell the user when CLIVE needs them or has finished, but only while the
+     * card cannot tell them itself: covered by a window, or not on the desktop.
+     */
+    _cliveNotifyTransition(state) {
+        const previous = this._cliveLastStatus;
+        this._cliveLastStatus = state.status;
+        if (!previous || previous === state.status)
+            return;
+        const preferences = state.preferences ?? {};
+        let title = null;
+        if (['awaiting_approval', 'awaiting_confirmation'].includes(state.status)) {
+            if (preferences.notify_waiting === false)
+                return;
+            title = state.status === 'awaiting_approval' ? 'CLIVE is waiting for your approval'
+                : 'CLIVE needs you to confirm an action';
+        } else if (ACTIVE_STATUSES.includes(previous) &&
+                   ['complete', 'paused', 'cancelled'].includes(state.status)) {
+            if (preferences.notify_finished === false || state.status === 'cancelled')
+                return;
+            title = state.status === 'complete' ? 'CLIVE finished the task' : 'CLIVE paused the task';
+        }
+        if (!title || this._cliveCardVisible())
+            return;
+        // Generic on purpose: a notification can show on the lock screen, and
+        // recipients, subjects or file names are not for anyone passing by.
+        const count = state.confirmation?.calls?.length ?? 0;
+        const body = state.status === 'awaiting_confirmation'
+            ? `Review ${count || 'an'} action${count === 1 || !count ? '' : 's'} in CLIVE.`
+            : state.status === 'awaiting_approval' ? 'Review the task in CLIVE.'
+                : state.status === 'paused' ? 'Open CLIVE to see why.' : 'Open CLIVE to see the answer.';
+        this._cliveNotify(title, body);
+    }
+
+    /** One notification per follow-up check that found something new. */
+    _cliveNotifyFollowups(state) {
+        const found = state.followups;
+        if (!found?.checked || found.checked === this._cliveFollowupsSeen)
+            return;
+        const first = this._cliveFollowupsSeen === undefined;
+        this._cliveFollowupsSeen = found.checked;
+        // The first state after start-up is the last check, already seen.
+        if (first || !found.count)
+            return;
+        this._cliveNotify(`${found.count} email${found.count === 1 ? '' : 's'} may need a reply`,
+            'Open CLIVE to review them.');
+    }
+
+    _cliveCardVisible() {
+        const record = this._widgets?.find(one => one.entry.type === 'clive');
+        return !!record && record.widget.mapped && !this._widgetIsCovered(record);
+    }
+
+    _cliveNotify(title, body) {
+        try {
+            if (!this._cliveSource) {
+                this._cliveSource = new MessageTray.Source({
+                    title: 'CLIVE', iconName: 'system-help-symbolic',
+                });
+                this._cliveSource.connect('destroy', () => {
+                    this._cliveSource = null;
+                });
+                Main.messageTray.add(this._cliveSource);
+            }
+            const notification = new MessageTray.Notification({
+                source: this._cliveSource, title, body,
+            });
+            notification.connect('activated', () => this._clive?.open());
+            this._cliveSource.addNotification(notification);
+        } catch (error) {
+            console.warn(`desktop-forge: could not notify: ${error}`);
+        }
     }
 
     _syncShellTheme(config = null) {
@@ -353,6 +604,8 @@ export default class DesktopForgeExtension extends Extension {
     _destroyWidgets() {
         for (const record of this._widgets ?? []) {
             const {widget} = record;
+            if (record.entry.type === 'terminal')
+                this._terminals.unbindWidget(record.entry.id);
             widget.clearDesktopInteraction();
             this._removeFromDesktop(widget);
             record.layer = null;
@@ -383,6 +636,8 @@ export default class DesktopForgeExtension extends Extension {
                 monitor.y + (entry.y ?? 0),
                 width, height);
             widget.set_position(x, y);
+            if (entry.type === 'terminal')
+                this._terminals.place(entry.id, {x, y, width, height});
 
             const relativeX = Math.round(x - monitor.x);
             const relativeY = Math.round(y - monitor.y);
@@ -462,8 +717,6 @@ export default class DesktopForgeExtension extends Extension {
             metaWindow?.connectObject(
                 'notify::minimized', () => this._queueInteractionUpdate(),
                 'notify::fullscreen', () => this._queueInteractionUpdate(),
-                'notify::maximized-horizontally', () => this._queueInteractionUpdate(),
-                'notify::maximized-vertically', () => this._queueInteractionUpdate(),
                 'position-changed', () => this._queueInteractionUpdate(),
                 'size-changed', () => this._queueInteractionUpdate(),
                 'workspace-changed', () => this._queueInteractionUpdate(),
@@ -491,6 +744,11 @@ export default class DesktopForgeExtension extends Extension {
     _queueInteractionUpdate() {
         if (this._interactionId || this._disabling)
             return;
+        // Nothing to move between layers: skip the per-frame work while
+        // windows are dragged.
+        if (!this._editMode && !this._widgets.some(record =>
+            record.widget.interactive || record.layer === 'chrome'))
+            return;
         const laters = global.compositor.get_laters();
         this._interactionId = laters.add(Meta.LaterType.BEFORE_REDRAW, () => {
             this._interactionId = 0;
@@ -512,9 +770,8 @@ export default class DesktopForgeExtension extends Extension {
         if (this._editMode || this._disabling)
             return;
         for (const record of this._widgets) {
-            const layer = widgetLayer(
-                record.widget.interactive,
-                this._widgetIsCovered(record));
+            const interactive = record.widget.interactive;
+            const layer = widgetLayer(interactive, interactive && this._widgetIsCovered(record));
             this._setWidgetLayer(record, layer);
         }
     }
@@ -570,6 +827,7 @@ export default class DesktopForgeExtension extends Extension {
         // keyboard would sit underneath it with its typing cue stuck on.
         for (const {widget} of this._widgets)
             widget.clearDesktopInteraction();
+        this._terminals.setEditing(true);
         this._editMode = new EditMode({
             entries: this._widgets,
             onDetach: widget => {
@@ -594,6 +852,7 @@ export default class DesktopForgeExtension extends Extension {
         for (const record of this._widgets)
             this._setWidgetLayer(record, 'background');
         this._positionAll();
+        this._terminals.setEditing(false);
         this._updateInteractionLayers();
 
         if (this._disabling)
@@ -631,8 +890,13 @@ export default class DesktopForgeExtension extends Extension {
         // "waiting for the daemon" state they start in.
         for (const {widget, entry} of this._widgets) {
             if (!WIDGET_PROVIDER[entry.type])
-                widget.setStatus(null, false);
+                widget.setStatus(entry.type === 'terminal' ? this._terminals.status(entry.id) : null, false);
         }
+    }
+
+    _terminalStatus(id) {
+        const record = this._widgets?.find(item => item.entry.id === id);
+        record?.widget.setStatus(this._terminals.status(id), false);
     }
 
     _refreshProvider(provider) {
@@ -703,7 +967,28 @@ export default class DesktopForgeExtension extends Extension {
             this._rebuildPending = true;
             return;
         }
+        if (this._moveOnly(config))
+            return;
         this._scheduleRebuild();
+    }
+
+    /**
+     * When only positions and sizes changed (a saved widget layout was
+     * chosen), move the cards instead of rebuilding them all.
+     */
+    _moveOnly(config) {
+        if (this._rebuildId || shapeFingerprint(config) !== shapeFingerprint(this._builtConfig))
+            return false;
+        for (const {entry} of this._widgets) {
+            const stored = config.widgets?.find(w => w.id === entry.id);
+            if (stored)
+                Object.assign(entry, {monitor: stored.monitor, x: stored.x, y: stored.y,
+                    width: stored.width, height: stored.height});
+        }
+        this._fingerprint = widgetFingerprint(config);
+        this._builtConfig = config;
+        this._positionAll();
+        return true;
     }
 
     _scheduleRebuild() {
@@ -789,6 +1074,7 @@ export default class DesktopForgeExtension extends Extension {
             return;
         mutate(config);
         this._fingerprint = widgetFingerprint(config);
+        this._builtConfig = config;
         this._chromeFingerprint = chromeFingerprint(config);
         writeJson(CONFIG_PATH, config);
     }
@@ -801,8 +1087,16 @@ export default class DesktopForgeExtension extends Extension {
  * actors around, and rebuilding them would throw away the cards mid-edit.
  */
 function widgetFingerprint(config) {
-    const {edit_layout: _editLayout, chrome: _chrome, ...rest} = config ?? {};
+    const {edit_layout: _editLayout, chrome: _chrome, layouts: _layouts, ...rest} = config ?? {};
     return JSON.stringify(rest);
+}
+
+/** The widget fingerprint without where each widget is. */
+function shapeFingerprint(config) {
+    const {edit_layout: _editLayout, chrome: _chrome, layouts: _layouts, widgets = [], ...rest} = config ?? {};
+    const shapes = (Array.isArray(widgets) ? widgets : []).map(
+        ({monitor: _m, x: _x, y: _y, width: _w, height: _h, ...widget}) => widget);
+    return JSON.stringify({...rest, widgets: shapes});
 }
 
 function chromeFingerprint(config) {

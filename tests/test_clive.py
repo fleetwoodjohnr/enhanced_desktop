@@ -18,6 +18,8 @@ from desktop_forge.clive.policy import (ScopeChanged, auto_approved, check_scope
                                         local_path, public_url)
 from desktop_forge.clive.settings import DEFAULTS
 from desktop_forge.clive.storage import History
+from desktop_forge.clive.integrations import AccessStore, build_registry
+from desktop_forge.clive.integrations import mail as mail_integration
 from desktop_forge.clive.tools import BY_NAME, READ_ONLY, Tools, blocked_surface
 
 try:
@@ -51,6 +53,7 @@ class AgentTests(unittest.TestCase):
         self.home = patch("pathlib.Path.home", return_value=self.root)
         self.home.start()
         self.addCleanup(self.home.stop)
+        self.enterContext(patch.object(mail_integration, "ACCOUNTS_PATH", self.root / "mail.json"))
         self.addCleanup(self.tmp.cleanup)
         self.agents = []
         # Agent behavior must never inherit the developer machine's live CLIVE
@@ -277,8 +280,13 @@ class AgentTests(unittest.TestCase):
         launcher.launch.return_value = True
         approved = plan(["app_launch"])
         approved["permissions"]["apps"] = ["libreoffice-calc.desktop"]
+        calc = [{"desktop_id": "libreoffice-calc.desktop", "name": "LibreOffice Calc",
+                 "categories": "Office;Spreadsheet;"}]
+        registry = build_registry(AccessStore(self.root / "access.json",
+                                              known_apps=lambda: ["libreoffice-calc.desktop"]),
+                                  lambda: calc)
         with patch("desktop_forge.clive.tools.controllable_app", return_value=launcher):
-            result = Tools(None, desktop, threading.Event()).call(
+            result = Tools(None, desktop, threading.Event(), registry).call(
                 "app_launch", {"desktop_id": "libreoffice-calc.desktop"}, approved)
         self.assertEqual(result, {"launched": "libreoffice-calc.desktop", "ready": True})
         desktop.wait_for_app.assert_called_once_with("libreoffice-calc.desktop", timeout=10)
@@ -513,6 +521,48 @@ class PolicyAndStorageTests(unittest.TestCase):
             history.finish_call("a", {"created": "note"})
             self.assertEqual(history.begin_call("a", "task", "file_write", {}), {"created": "note"})
 
+    def test_a_model_switch_takes_effect_on_the_next_request(self):
+        calls, notices = [], []
+        live = {"cloud_enabled": True, "free_account_confirmed": True}
+        class Transport(Models):
+            def _chat(self, messages, tools, schema):
+                calls.append(self.local)
+                return {"content": "ok"}
+        model = Transport(dict(live), threading.Event(), lambda **k: notices.append(k.get("notice")))
+        model.follow(lambda: dict(live))
+        model.chat([])
+        live["cloud_enabled"] = False
+        model.chat([])
+        live["cloud_enabled"] = True
+        model.chat([])
+        self.assertEqual(calls, [False, True, False])
+        self.assertIn("Switched to the local model.", notices)
+
+    def test_fallback_can_be_turned_off(self):
+        class Transport(Models):
+            def _chat(self, messages, tools, schema):
+                raise ModelUnavailable("Free allowance exhausted")
+        model = Transport({"cloud_enabled": True, "free_account_confirmed": True,
+                           "fallback_to_local": False}, threading.Event())
+        with self.assertRaises(ModelUnavailable):
+            model.chat([])
+        self.assertFalse(model.local, "a refused fallback must not quietly switch to local")
+
+    def test_a_cloud_failure_keeps_the_task_local_even_if_cloud_is_still_selected(self):
+        calls = []
+        class Transport(Models):
+            def _chat(self, messages, tools, schema):
+                calls.append(self.local)
+                if not self.local:
+                    raise ModelUnavailable("Free allowance exhausted")
+                return {"content": "ok"}
+        live = {"cloud_enabled": True, "free_account_confirmed": True}
+        model = Transport(dict(live), threading.Event())
+        model.follow(lambda: dict(live))
+        model.chat([])
+        model.chat([])
+        self.assertEqual(calls, [False, True, True])
+
     def test_cloud_failure_retries_only_inference_with_existing_tool_results(self):
         calls = []
         class Transport(Models):
@@ -529,3 +579,53 @@ class PolicyAndStorageTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(HAS_AGENT, "Install optional CLIVE dependencies to run agent integration tests")
+class StagedAttachmentTests(AgentTests):
+    def recording(self, agent, seen):
+        original = agent.model_factory
+
+        class Recording(original):
+            def chat(self, messages, tools=None, schema=None):
+                seen.append(messages)
+                return original.chat(self, messages, tools, schema)
+        agent.model_factory = Recording
+
+    def test_staged_files_are_checked_when_picked_and_can_be_sent_alone(self):
+        good = self.root / "a.md"
+        good.write_text("alpha")
+        self.settings()
+        agent = self.agent([{"content": json.dumps({"answer": "It says alpha."})}])
+        seen = []
+        self.recording(agent, seen)
+        result = agent.draft_add([str(good), "/etc/hostname", str(self.root / "missing.md")])
+        self.assertEqual([item["name"] for item in result["draft"]], ["a.md"])
+        self.assertEqual(len(result["errors"]), 2)
+        self.assertTrue(any("hostname" in e for e in result["errors"]))
+        agent.submit("", use_draft=True)
+        state = self.wait(agent)
+        self.assertEqual(state["status"], "complete", state)
+        self.assertEqual(agent.draft_public(), [], "a sent file stayed staged")
+        sent = seen[0]
+        self.assertIn("alpha", json.dumps(sent))
+        # The question comes after the file, where the model reads it last.
+        self.assertTrue(sent[-1]["content"].startswith("Please review the attached file"))
+        self.assertEqual(state["messages"][0]["attachments"][0]["name"], "a.md")
+
+    def test_a_follow_up_in_the_same_chat_still_has_the_file_and_checkpoints_do_not(self):
+        attached = self.root / "facts.md"
+        attached.write_text("the code is 7731")
+        self.settings()
+        agent = self.agent([{"content": json.dumps({"answer": "Noted."})},
+                            {"content": json.dumps({"answer": "It was 7731."})}])
+        seen = []
+        self.recording(agent, seen)
+        first = agent.submit("Remember this", attachments=[str(attached)])
+        self.wait(agent)
+        agent.submit("What was the code?", conversation=first["conversation"])
+        self.wait(agent)
+        self.assertIn("the code is 7731", json.dumps(seen[-1]))
+        self.assertIn("attached earlier", json.dumps(seen[-1]))
+        checkpoints = (self.root / "data" / "checkpoints.sqlite").read_bytes()
+        self.assertNotIn(b"the code is 7731", checkpoints, "file text was written into checkpoints")

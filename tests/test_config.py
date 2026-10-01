@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -76,6 +78,28 @@ class ConfigMigrationTests(unittest.TestCase):
         self.assertEqual(dock["opacity"], 1.0)
         self.assertEqual(dock["foreground_mode"], "auto")
 
+    def test_top_bar_behavior_is_clamped_and_typed(self) -> None:
+        top = config.Config(chrome={"top_bar": {
+            "reveal_delay": -3, "hide_delay": 42, "animation_time": True,
+            "reveal_method": "teleport", "sensitivity": "high",
+            "hide_when": "maximized", "reveal_in_fullscreen": "yes",
+        }}).chrome_options("top_bar")
+        self.assertEqual(top["reveal_delay"], 0.0)
+        self.assertEqual(top["hide_delay"], 5.0)
+        # A boolean is not a duration, even though Python calls it an int.
+        self.assertEqual(top["animation_time"], 0.2)
+        self.assertEqual(top["reveal_method"], "hover")
+        self.assertEqual(top["sensitivity"], "high")
+        self.assertEqual(top["hide_when"], "maximized")
+        self.assertIs(top["reveal_in_fullscreen"], False)
+
+    @unittest.skipUnless(shutil.which("gjs"), "gjs is needed to read the extension defaults")
+    def test_extension_and_app_share_chrome_defaults(self) -> None:
+        script = Path(__file__).with_name("chrome_defaults_dump.js")
+        result = subprocess.run(["gjs", "-m", str(script)], capture_output=True,
+                                text=True, timeout=10, check=True)
+        self.assertEqual(json.loads(result.stdout), config.DEFAULT_CHROME)
+
     def test_desktop_icon_options_are_normalized_without_changing_defaults(self) -> None:
         self.assertEqual(config.Config().desktop_icon_options()["material"], "system")
         candidate = config.Config(desktop_icons={
@@ -144,6 +168,42 @@ class ConfigMigrationTests(unittest.TestCase):
         weather = config.DEFAULT_PROVIDER_OPTIONS["weather"]
         self.assertEqual(weather["interval"], 300)
         self.assertEqual(weather["forecast_mode"], "hourly")
+
+
+class WidgetLayoutTests(unittest.TestCase):
+    def test_save_move_and_apply_restores_positions(self) -> None:
+        cfg = config.default_config()
+        clock, system = cfg.widgets
+        config.save_layout(cfg, "Work")
+        clock.x, clock.y, system.enabled = 500, 400, False
+        extra = config.Widget(type="clock", x=7, y=8)
+        cfg.widgets.append(extra)
+        self.assertTrue(config.apply_layout(cfg, "Work"))
+        self.assertEqual((clock.x, clock.y, system.enabled), (60, 60, True))
+        self.assertEqual((extra.x, extra.y), (7, 8), "a widget added later keeps its place")
+        self.assertFalse(config.apply_layout(cfg, "Missing"))
+        config.delete_layout(cfg, "Work")
+        self.assertEqual(cfg.layouts, {})
+
+    def test_layouts_round_trip_and_bad_entries_are_dropped(self) -> None:
+        cfg = config.default_config()
+        config.save_layout(cfg, "  Focus  ")
+        raw = cfg.to_dict()
+        raw["layouts"]["x" * 41] = []
+        raw["layouts"]["Broken"] = [{"id": "a", "x": "1"}, {"id": 3}, "nope",
+                                    {"id": "ok", "monitor": 0, "x": 1, "y": 2, "width": 3, "height": 4}]
+        raw["layouts"]["Not a list"] = {}
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.json"
+            path.write_text(json.dumps(raw))
+            with mock.patch.object(config, "CONFIG_PATH", str(path)):
+                loaded = config.load()
+        self.assertEqual(set(loaded.layouts), {"Focus", "Broken"})
+        self.assertEqual(loaded.layouts["Focus"], cfg.layouts["Focus"])
+        self.assertEqual(loaded.layouts["Broken"],
+                         [{"id": "ok", "enabled": True, "monitor": 0, "x": 1, "y": 2, "width": 3, "height": 4}])
+        with self.assertRaises(ValueError):
+            config.save_layout(cfg, "   ")
 
 
 if __name__ == "__main__":

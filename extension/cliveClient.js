@@ -15,9 +15,6 @@ export class CliveClient {
         this.listeners = new Set();
         this.state = {status: 'idle', messages: [], notice: 'Connecting to CLIVE…'};
         this.draft = '';
-        // Staged the same way as the draft, and for the same reason: the card
-        // is rebuilt on theme and layout changes, this client is not.
-        this.attachments = [];
         this.pickSerial = 0;
         this.picks = new Set();
         this.cancellable = new Gio.Cancellable();
@@ -85,22 +82,41 @@ export class CliveClient {
         const token = `dfclive${this.pickSerial++}_${GLib.random_int_range(0, 1000000)}`;
         const sender = Gio.DBus.session.get_unique_name().slice(1).replace(/\./g, '_');
         const path = `${PORTAL_PATH}/request/${sender}/${token}`;
-        let subscription = Gio.DBus.session.signal_subscribe(PORTAL, REQUEST, 'Response', path,
-            null, Gio.DBusSignalFlags.NONE, (_bus, _sender, _path, _iface, _signal, parameters) => {
-                this._endPick(subscription);
-                subscription = 0;
-                if (this.cancellable.is_cancelled())
-                    return;
-                const [code, results] = parameters.deep_unpack();
-                // 1 is the user cancelling, which is an answer, not a failure.
-                if (code !== 0)
-                    return;
-                // deep_unpack leaves an a{sv}'s values packed, one level down.
-                const uris = results.uris?.deep_unpack() ?? [];
-                const paths = uris.map(uri => Gio.File.new_for_uri(uri).get_path()).filter(one => !!one);
-                if (paths.length)
-                    callback(paths);
-            });
+        let subscription = 0;
+        let moved = 0;
+        let answered = false;
+        const onResponse = parameters => {
+            if (answered)
+                return;
+            answered = true;
+            this._endPick(subscription);
+            this._endPick(moved);
+            subscription = moved = 0;
+            if (this.cancellable.is_cancelled())
+                return;
+            const [code, results] = parameters.deep_unpack();
+            // 1 is the user cancelling, which is an answer, not a failure.
+            if (code === 1)
+                return;
+            if (code !== 0) {
+                this.notify('The file chooser failed. Attach files from the expanded chat instead.');
+                return;
+            }
+            // deep_unpack leaves an a{sv}'s values packed, one level down.
+            const uris = results.uris?.deep_unpack() ?? [];
+            const files = uris.map(uri => Gio.File.new_for_uri(uri));
+            const paths = files.map(file => file.get_path()).filter(one => !!one);
+            const remote = files.filter(file => !file.get_path()).map(file => file.get_basename());
+            if (remote.length)
+                this.notify(`${remote.join(', ')} ${remote.length > 1 ? 'are' : 'is'} on a network ` +
+                    'location CLIVE cannot read directly; copy it to your computer first.');
+            if (paths.length)
+                callback(paths);
+        };
+        const watch = handle => Gio.DBus.session.signal_subscribe(PORTAL, REQUEST, 'Response', handle,
+            null, Gio.DBusSignalFlags.NONE,
+            (_bus, _sender, _path, _iface, _signal, parameters) => onResponse(parameters));
+        subscription = watch(path);
         this.picks.add(subscription);
         const options = new GLib.Variant('a{sv}', {
             handle_token: GLib.Variant.new_string(token),
@@ -114,10 +130,17 @@ export class CliveClient {
             new GLib.VariantType('(o)'), Gio.DBusCallFlags.NONE, -1, this.cancellable,
             (bus, response) => {
                 try {
-                    bus.call_finish(response);
+                    const [handle] = bus.call_finish(response).deep_unpack();
+                    // An older portal may ignore handle_token and answer on a
+                    // path of its own; listen there as well.
+                    if (handle && handle !== path && !answered) {
+                        moved = watch(handle);
+                        this.picks.add(moved);
+                    }
                 } catch (_error) {
-                    if (!subscription || this.cancellable.is_cancelled())
+                    if (answered || this.cancellable.is_cancelled())
                         return;
+                    answered = true;
                     this._endPick(subscription);
                     subscription = 0;
                     this.notify('Could not open the file chooser. Attach files from the expanded chat instead.');
@@ -134,6 +157,18 @@ export class CliveClient {
     open() {
         const app = Gio.DesktopAppInfo.new('org.jrf.DesktopForge.desktop');
         if (app)
+            app.launch_action('clive', null);
+    }
+
+    /** Open CLIVE settings in the app. The section names where to land. */
+    openSettings(_section = 'models') {
+        const app = Gio.DesktopAppInfo.new('org.jrf.DesktopForge.desktop');
+        if (!app)
+            return;
+        // Older installs have no settings action in their desktop file yet.
+        if (app.list_actions().includes('clive-settings'))
+            app.launch_action('clive-settings', null);
+        else
             app.launch_action('clive', null);
     }
 

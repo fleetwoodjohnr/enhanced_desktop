@@ -44,8 +44,14 @@ from gi.repository import Gtk, Adw
         exit 1
     fi
 
-    # The calendar widget is the only optional dependency -- everything else
-    # works without it, so a missing typelib is a warning, not a failure.
+    # The calendar and terminal widgets have optional dependencies --
+    # everything else works without them, so a missing typelib is a warning,
+    # not a failure.
+    if ! python3 -c "import gi; gi.require_version('Vte', '3.91'); from gi.repository import Vte" >/dev/null 2>&1; then
+        echo "note: VTE for GTK 4 not found — the terminal widget will be unavailable" >&2
+        echo "  install it with: sudo dnf install -y vte291-gtk4" >&2
+    fi
+
     if ! python3 -c "
 import gi
 gi.require_version('ECal', '2.0')
@@ -75,6 +81,19 @@ resolve_src_dir() {
     exit 1
 }
 
+copy_app_tree() {
+    local src_dir="$1"
+    rm -rf "$SHARE_DIR/desktop_forge"
+    cp -a "$src_dir/desktop_forge" "$SHARE_DIR/desktop_forge"
+    # rsync excludes these, and a stale cache is never worth shipping.
+    find "$SHARE_DIR/desktop_forge" -name '__pycache__' -type d -prune -exec rm -rf {} +
+}
+
+app_tree_matches() {
+    local src_dir="$1"
+    diff -rq --exclude='__pycache__' "$src_dir/desktop_forge" "$SHARE_DIR/desktop_forge" >/dev/null 2>&1
+}
+
 install_app() {
     local src_dir="$1"
 
@@ -84,8 +103,21 @@ install_app() {
         rsync -a --delete --delete-excluded --exclude '__pycache__' \
             "$src_dir/desktop_forge/" "$SHARE_DIR/desktop_forge/"
     else
-        rm -rf "$SHARE_DIR/desktop_forge"
-        cp -a "$src_dir/desktop_forge" "$SHARE_DIR/desktop_forge"
+        copy_app_tree "$src_dir"
+    fi
+
+    # The installed copy is imported ahead of the checkout, so a bad copy is
+    # what the app runs. rsync once wrote every new module as an empty file
+    # and exited 0; the only symptom was tabs showing "unavailable". Check the
+    # copy against the checkout, and redo it with plain cp if it does not match.
+    if require_cmd diff && ! app_tree_matches "$src_dir"; then
+        echo "warning: the installed copy of desktop_forge does not match the checkout — copying it again" >&2
+        copy_app_tree "$src_dir"
+        if ! app_tree_matches "$src_dir"; then
+            echo "error: $SHARE_DIR/desktop_forge still differs from $src_dir/desktop_forge:" >&2
+            diff -rq --exclude='__pycache__' "$src_dir/desktop_forge" "$SHARE_DIR/desktop_forge" >&2 || true
+            exit 1
+        fi
     fi
 
     chmod +x "$src_dir/bin/desktop-forge" "$src_dir/bin/desktop-forged"
@@ -151,6 +183,12 @@ install_extension() {
     mkdir -p "$EXTENSIONS_DIR"
     rm -rf "${EXTENSIONS_DIR:?}/$EXTENSION_UUID"
     cp -a "$src_dir/extension" "$EXTENSIONS_DIR/$EXTENSION_UUID"
+    # The keyboard shortcuts schema; without it the extension still runs,
+    # only its shortcuts are unavailable.
+    if require_cmd glib-compile-schemas; then
+        glib-compile-schemas "$EXTENSIONS_DIR/$EXTENSION_UUID/schemas" ||
+            echo "warning: could not compile the Desktop Forge shortcuts schema" >&2
+    fi
 
     if require_cmd gnome-extensions; then
         # Enabling succeeds only once the shell has scanned the new directory,

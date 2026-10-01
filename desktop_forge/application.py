@@ -17,6 +17,8 @@ class DesktopForgeApplication(Adw.Application):
         super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
         self.add_main_option("clive", 0, GLib.OptionFlags.NONE, GLib.OptionArg.NONE,
                              "Open the CLIVE assistant", None)
+        self.add_main_option("clive-settings", 0, GLib.OptionFlags.NONE, GLib.OptionArg.STRING,
+                             "Open CLIVE settings at a section (for example models)", "SECTION")
         self._window = None
 
     def do_startup(self):
@@ -27,7 +29,11 @@ class DesktopForgeApplication(Adw.Application):
         self.add_action(action)
 
     def do_command_line(self, command_line):
-        if command_line.get_options_dict().contains("clive"):
+        options = command_line.get_options_dict()
+        if options.contains("clive-settings"):
+            section = options.lookup_value("clive-settings", GLib.VariantType.new("s"))
+            self._open_clive_settings(section.get_string() if section else "")
+        elif options.contains("clive"):
             self._open_clive()
         else:
             self.activate()
@@ -36,6 +42,12 @@ class DesktopForgeApplication(Adw.Application):
     def _open_clive(self):
         self.activate()
         self._window._stack.set_visible_child_name("clive")
+
+    def _open_clive_settings(self, section: str):
+        self._open_clive()
+        page = self._window._pages.get("clive")
+        if hasattr(page, "open_settings"):
+            page.open_settings(section)
 
     def do_shutdown(self):
         if self._window:
